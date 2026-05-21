@@ -81,8 +81,13 @@ def plot_dendrogram(model, **kwargs):
                 current_count += counts[child_idx - n_samples]
         counts[i] = current_count
 
+    # Using 'haversine' metric, distances are in radians
+    # -> convert to km.
+    my_dist = model.distances_
+    rho = 6370 # radius of Earth (in spherical approximation)
+    my_dist *= rho
     linkage_matrix = np.column_stack(
-        [model.children_, model.distances_, counts]
+        [model.children_, my_dist, counts]
     ).astype(float)
 
     print(linkage_matrix)
@@ -106,15 +111,26 @@ print(Xmetric)
 ### TODO: understand what the default linkage 'ward' does
 
 # setting distance_threshold=0 ensures we compute the full tree.
-model = AgglomerativeClustering(metric='haversine', linkage='single', distance_threshold=0, n_clusters=None)
-model = model.fit(Xrad)
+r_thres=100 # km
+mu_thres = r_thres/rho
+model = AgglomerativeClustering(metric='haversine', linkage='single', distance_threshold=mu_thres, n_clusters=None)
+cluster_labels = model.fit_predict(Xrad)
+print(cluster_labels)
 
+# points that have no neighbor within the distance threshould count as single-element cluster with their own ID
+from collections import Counter
+counts_cluster_labels = Counter(cluster_labels)
+counts_cluster_labels = dict(
+        sorted(counts_cluster_labels.items(), key=lambda _: _[1], reverse=True)
+)
+print(counts_cluster_labels)
 
 fig,hax = plt.subplots(1)
 plt.title("Hierarchical Clustering Dendrogram")
 # plot the top three levels of the dendrogram
 # plot_dendrogram(model, truncate_mode="level", p=3)
 plot_dendrogram(model, truncate_mode="level", p=7, ax=hax)
-plt.xlabel("Number of points in node (or index of point if no parenthesis).")
+plt.xlabel("number of points in node (or index of point if no parenthesis)")
+plt.ylabel("distance [km]")
 # hax.set_yscale('log')
 plt.show()

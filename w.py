@@ -177,6 +177,26 @@ def cluster_plot(*, hax, id_cluster: int, indicate_center=False, kwargs):
         hax.plot(center[0], center[1], '+', **kwargs)
         return center
 
+def get_initial_course(point1, point2):
+    """
+    Literature:
+    https://www.edwilliams.org/avform147.htm#Crs access 2026-05-22
+    """
+    lon1 = point1[0]
+    lat1 = point1[1]
+    lon2 = point2[0]
+    lat2 = point2[1]
+
+    # we don't handle the special case with initial point being at a pole
+    d = 2*np.arcsin(np.sqrt((np.sin((lat1-lat2)/2))**2 + np.cos(lat1)*np.cos(lat2)*(np.sin((lon1-lon2)/2))**2))
+    if np.sin(lon2-lon1)<0:
+        tc1 = np.arccos((np.sin(lat2)-np.sin(lat1)*cos(np.d))/(np.sin(d)*np.cos(lat1)))
+    else:
+        arg = ((np.sin(lat2)-np.sin(lat1)*np.cos(d))/(np.sin(d)*np.cos(lat1)))
+        print(f'arg={arg}')
+        tc1 = 2*np.pi - np.arccos((np.sin(lat2)-np.sin(lat1)*np.cos(d))/(np.sin(d)*np.cos(lat1)))
+    return tc1
+
 # fixed dummy position in Hamburg for dev purposes
 my_pos = [10, 53.5]
 
@@ -187,3 +207,10 @@ center = cluster_plot(hax=hax,id_cluster=1, indicate_center=True, kwargs={'color
 center = cluster_plot(hax=hax,id_cluster=0, indicate_center=True, kwargs={'color':'r'})
 print(center)
 plt.show()
+
+# this example does not work due to rounding issues (acos called with argument 1.0000000000000002)
+print(get_initial_course([10.0, 53.5], [10.0, 53.6]))
+
+# TODO:
+# compute bearing and distance for two biggest clusters in HH
+# https://www.edwilliams.org/avform147.htm#Crs

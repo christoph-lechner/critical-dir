@@ -106,7 +106,7 @@ from sklearn.metrics.pairwise import haversine_distances
 Xmetric = haversine_distances(Xrad)
 rho = 6370 # radius of Earth (in spherical approximation)
 Xmetric = rho*Xmetric
-print(Xmetric)
+# print(Xmetric)
 
 ### TODO: understand what the default linkage 'ward' does
 
@@ -144,9 +144,11 @@ print(counts_cluster_labels)
 Compute "Geometric median" (minimizes L1 norm in 2-D).
 (Note: do this only if longitude/latitude values are from a small area, like a city.)
 """
-def compute_cluster_center(id_cluster: int):
+def cluster_compute_center(id_cluster: int):
     # get all points in cluster (with hard-coded ID)
     idx = [_ for _,x in enumerate(cluster_labels) if x==id_cluster]
+    if len(idx)==0:
+        raise ValueError(f'no cluster with id={id_cluster}')
     points = X[idx,:]
     print(points)
 
@@ -162,8 +164,26 @@ def compute_cluster_center(id_cluster: int):
         initial_guess,
         args=(points,)
     )
-
     return result.x
 
-center = compute_cluster_center(1)
+def cluster_plot(*, hax, id_cluster: int, indicate_center=False, kwargs):
+    idx = [_ for _,x in enumerate(cluster_labels) if x==id_cluster]
+    if len(idx)==0:
+        print(f'warning: no cluster to plot for id={id_cluster}')
+    points = X[idx,:]
+    hax.plot(points[:,0], points[:,1], 'o', **kwargs)
+    if indicate_center:
+        center = cluster_compute_center(id_cluster)
+        hax.plot(center[0], center[1], '+', **kwargs)
+        return center
+
+# fixed dummy position in Hamburg for dev purposes
+my_pos = [10, 53.5]
+
+# center = cluster_compute_center(1)
+# print(center)
+fig,hax = plt.subplots(1)
+center = cluster_plot(hax=hax,id_cluster=1, indicate_center=True, kwargs={'color':'b'})
+center = cluster_plot(hax=hax,id_cluster=0, indicate_center=True, kwargs={'color':'r'})
 print(center)
+plt.show()

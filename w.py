@@ -117,13 +117,6 @@ model = AgglomerativeClustering(metric='haversine', linkage='single', distance_t
 cluster_labels = model.fit_predict(Xrad)
 print(cluster_labels)
 
-# points that have no neighbor within the distance threshould count as single-element cluster with their own ID
-from collections import Counter
-counts_cluster_labels = Counter(cluster_labels)
-counts_cluster_labels = dict(
-        sorted(counts_cluster_labels.items(), key=lambda _: _[1], reverse=True)
-)
-print(counts_cluster_labels)
 
 fig,hax = plt.subplots(1)
 plt.title("Hierarchical Clustering Dendrogram")
@@ -132,5 +125,45 @@ plt.title("Hierarchical Clustering Dendrogram")
 plot_dendrogram(model, truncate_mode="level", p=7, ax=hax)
 plt.xlabel("number of points in node (or index of point if no parenthesis)")
 plt.ylabel("distance [km]")
-# hax.set_yscale('log')
+hax.set_ylim(0.1, 1.0e4)
+hax.set_yscale('log')
 plt.show()
+
+
+
+# points that have no neighbor within the distance threshould count as single-element cluster with their own ID
+from collections import Counter
+counts_cluster_labels = Counter(cluster_labels)
+counts_cluster_labels = dict(
+        sorted(counts_cluster_labels.items(), key=lambda _: _[1], reverse=True)
+)
+print(counts_cluster_labels)
+
+
+"""
+Compute "Geometric median" (minimizes L1 norm in 2-D).
+(Note: do this only if longitude/latitude values are from a small area, like a city.)
+"""
+def compute_cluster_center(id_cluster: int):
+    # get all points in cluster (with hard-coded ID)
+    idx = [_ for _,x in enumerate(cluster_labels) if x==id_cluster]
+    points = X[idx,:]
+    print(points)
+
+    from scipy.optimize import minimize
+
+    def total_distance(center, points):
+        return np.sum(np.linalg.norm(points - center, axis=1))
+
+    initial_guess = points.mean(axis=0)
+
+    result = minimize(
+        total_distance,
+        initial_guess,
+        args=(points,)
+    )
+
+    return result.x
+
+center = compute_cluster_center(1)
+print(center)

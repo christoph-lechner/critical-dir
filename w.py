@@ -137,7 +137,7 @@ def cluster_plot(*, hax, cluster_data, cluster_labels, id_cluster: int, indicate
         return center
 
 
-def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=None, fprefix=None):
+def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=None, fprefix=None, exclude_isolated_points=True):
     """
     obj_path: If provided, this switches on storing images to files instead of displaying them
     spatial_filter: function used for spatial filtering. Takes single argument (JSON data point) and returns True if point is to be retained
@@ -196,6 +196,7 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     # fig,hax = plt.subplots(1)
     fig,hax = plot_new()
     hax.plot(longitude, latitude, 'o')
+    hax.set_title('Points as loaded from JSON Data')
     fn['scatter'] = plot_show_or_save(fig,'scatter')
 
     X = np.vstack((np.array(longitude),np.array(latitude)))
@@ -238,7 +239,7 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     plot_dendrogram(hax,model, truncate_mode="level", p=7)
     hax.set_xlabel("number of points in node (or index of point if no parenthesis)")
     hax.set_ylabel("distance [km]")
-    hax.set_ylim(0.1, 1.0e4)
+    hax.set_ylim(0.1, 3.5*cfg['rho']) # maximum length of great circle is pi*radius
     hax.set_yscale('log')
     fn['dendrogram'] = plot_show_or_save(fig, 'dendrogram')
 
@@ -260,12 +261,16 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     cluster_counter=0
     # fig,hax = plt.subplots(1)
     fig,hax = plot_new()
-    hax.plot(observer_pos[0], observer_pos[1], 'k+')
+    hax.plot(observer_pos[0], observer_pos[1], 'kx', label='your position')
     for id_cluster in sorted_cluster_ids:
-        curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':next(iter_colors)})
-        #
-        initial_course,dist_rad = get_nav(observer_pos, curr_cluster_center)
+        # if requested by user, ignore single-element 'clusters'
         curr_cluster_nele = dict(counts_cluster_labels)[id_cluster]
+        if exclude_isolated_points and curr_cluster_nele<=1:
+            continue
+        #
+        curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':next(iter_colors)})
+        initial_course,dist_rad = get_nav(observer_pos, curr_cluster_center)
+        #
         curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, center=curr_cluster_center, course=initial_course, dist=cfg['rho']*dist_rad)
         cluster_infos.append(curr_ci)
         print(curr_ci)
@@ -275,6 +280,8 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
             break
     hax.set_xlabel('longitude')
     hax.set_ylabel('latitude')
+    hax.set_title('Result of Clustering Analysis')
+    fig.legend()
     fn['clusters'] = plot_show_or_save(fig, 'clusters')
 
     return {'files':fn, 'diag_info': diag_info, 'clusters':cluster_infos}

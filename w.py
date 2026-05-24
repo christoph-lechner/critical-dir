@@ -187,6 +187,8 @@ def main():
     center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=1, indicate_center=True, kwargs={'color':'b'})
     center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=0, indicate_center=True, kwargs={'color':'r'})
     print(center)
+    hax.set_xlabel('longitude')
+    hax.set_ylabel('latitude')
     plt.show()
 
 

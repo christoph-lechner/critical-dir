@@ -3,6 +3,12 @@
 import json
 import matplotlib.pyplot as plt
 import numpy as np
+from nav import get_initial_course
+
+from scipy.cluster.hierarchy import dendrogram
+from sklearn.cluster import AgglomerativeClustering
+
+from collections import Counter
 
 def normalize_coords(d):
     """
@@ -28,42 +34,6 @@ def spatial_filter_criterion(d):
     # check against rect containing the State of Hamburg
     is_in_bbox = (9.7<=longitude) and (longitude<=10.4) and (53.35<=latitude) and (latitude<=53.75)
     return is_in_bbox
-
-
-
-with open('data__20260521T0041.json','r') as fin:
-    data_all = json.load(fin)
-
-data = []
-for d in data_all:
-    d = normalize_coords(d)
-    #if spatial_filter_criterion(d):
-    #    data.append(d)
-    data.append(d)
-
-longitude = [_['longitude'] for _ in data]
-latitude  = [_['latitude']  for _ in data]
-
-fig,hax = plt.subplots(1)
-hax.plot(longitude, latitude, 'o')
-plt.show()
-
-X = np.vstack((np.array(longitude),np.array(latitude)))
-X = np.transpose(X)
-Xrad = np.radians(X)
-print(X)
-
-
-
-"""
-Cluster and plot dendrogram
-"""
-import numpy as np
-from matplotlib import pyplot as plt
-from scipy.cluster.hierarchy import dendrogram
-
-from sklearn.cluster import AgglomerativeClustering
-from sklearn.datasets import load_iris
 
 ### based on code from https://scikit-learn.org/stable/auto_examples/cluster/plot_agglomerative_dendrogram.html#sphx-glr-auto-examples-cluster-plot-agglomerative-dendrogram-py
 def plot_dendrogram(model, **kwargs):
@@ -95,61 +65,16 @@ def plot_dendrogram(model, **kwargs):
     # Plot the corresponding dendrogram
     dendrogram(linkage_matrix, **kwargs)
 
-#####
-# pre-compute pair-wise distances on surface of Earth, using great circle distance
-# https://scikit-learn.org/stable/modules/generated/sklearn.metrics.pairwise.haversine_distances.html
-#
-# -> May not be needed, because AgglomerativeClustering supports metric='haversine' out-of-the-box.
-#    But keeping it because it helps to understand what the cluster algorithm did
-#####
-from sklearn.metrics.pairwise import haversine_distances
-Xmetric = haversine_distances(Xrad)
-rho = 6370 # radius of Earth (in spherical approximation)
-Xmetric = rho*Xmetric
-# print(Xmetric)
-
-### TODO: understand what the default linkage 'ward' does
-
-# setting distance_threshold=0 ensures we compute the full tree.
-r_thres=100 # km
-mu_thres = r_thres/rho
-model = AgglomerativeClustering(metric='haversine', linkage='single', distance_threshold=mu_thres, n_clusters=None)
-cluster_labels = model.fit_predict(Xrad)
-print(cluster_labels)
-
-
-fig,hax = plt.subplots(1)
-plt.title("Hierarchical Clustering Dendrogram")
-# plot the top three levels of the dendrogram
-# plot_dendrogram(model, truncate_mode="level", p=3)
-plot_dendrogram(model, truncate_mode="level", p=7, ax=hax)
-plt.xlabel("number of points in node (or index of point if no parenthesis)")
-plt.ylabel("distance [km]")
-hax.set_ylim(0.1, 1.0e4)
-hax.set_yscale('log')
-plt.show()
-
-
-
-# points that have no neighbor within the distance threshould count as single-element cluster with their own ID
-from collections import Counter
-counts_cluster_labels = Counter(cluster_labels)
-counts_cluster_labels = dict(
-        sorted(counts_cluster_labels.items(), key=lambda _: _[1], reverse=True)
-)
-print(counts_cluster_labels)
-
-
-"""
-Compute "Geometric median" (minimizes L1 norm in 2-D).
-(Note: do this only if longitude/latitude values are from a small area, like a city.)
-"""
-def cluster_compute_center(id_cluster: int):
+def cluster_compute_center(*, cluster_data, cluster_labels, id_cluster: int):
+    """
+    Compute "Geometric median" (minimizes L1 norm in 2-D).
+    (Note: do this only if longitude/latitude values are from a small area, like a city.)
+    """
     # get all points in cluster (with hard-coded ID)
     idx = [_ for _,x in enumerate(cluster_labels) if x==id_cluster]
     if len(idx)==0:
         raise ValueError(f'no cluster with id={id_cluster}')
-    points = X[idx,:]
+    points = cluster_data[idx,:]
     print(points)
 
     from scipy.optimize import minimize
@@ -166,24 +91,110 @@ def cluster_compute_center(id_cluster: int):
     )
     return result.x
 
-def cluster_plot(*, hax, id_cluster: int, indicate_center=False, kwargs):
+def cluster_plot(*, hax, cluster_data, cluster_labels, id_cluster: int, indicate_center=False, kwargs):
     idx = [_ for _,x in enumerate(cluster_labels) if x==id_cluster]
     if len(idx)==0:
         print(f'warning: no cluster to plot for id={id_cluster}')
-    points = X[idx,:]
+    points = cluster_data[idx,:]
     hax.plot(points[:,0], points[:,1], 'o', **kwargs)
     if indicate_center:
-        center = cluster_compute_center(id_cluster)
+        center = cluster_compute_center(cluster_data=cluster_data, cluster_labels=cluster_labels, id_cluster=id_cluster)
         hax.plot(center[0], center[1], '+', **kwargs)
         return center
 
-# fixed dummy position in Hamburg for dev purposes
-my_pos = [10, 53.5]
 
-# center = cluster_compute_center(1)
-# print(center)
-fig,hax = plt.subplots(1)
-center = cluster_plot(hax=hax,id_cluster=1, indicate_center=True, kwargs={'color':'b'})
-center = cluster_plot(hax=hax,id_cluster=0, indicate_center=True, kwargs={'color':'r'})
-print(center)
-plt.show()
+def main():
+    with open('data__20260521T0041.json','r') as fin:
+        data_all = json.load(fin)
+
+    data = []
+    for d in data_all:
+        d = normalize_coords(d)
+        #if spatial_filter_criterion(d):
+        #    data.append(d)
+        data.append(d)
+
+    longitude = [_['longitude'] for _ in data]
+    latitude  = [_['latitude']  for _ in data]
+
+    fig,hax = plt.subplots(1)
+    hax.plot(longitude, latitude, 'o')
+    plt.show()
+
+    X = np.vstack((np.array(longitude),np.array(latitude)))
+    X = np.transpose(X)
+    print(X)
+
+
+
+    """
+    Cluster and plot dendrogram
+    """
+    #####
+    # pre-compute pair-wise distances on surface of Earth, using great circle distance
+    # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.pairwise.haversine_distances.html
+    #
+    # -> May not be needed, because AgglomerativeClustering supports metric='haversine' out-of-the-box.
+    #    But keeping it because it helps to understand what the cluster algorithm did
+    #####
+    # for the clustering algorithm, we need long/lat in radians
+    Xrad = np.radians(X)
+
+    from sklearn.metrics.pairwise import haversine_distances
+    Xmetric = haversine_distances(Xrad)
+    rho = 6370 # radius of Earth (in spherical approximation)
+    Xmetric = rho*Xmetric
+    # print(Xmetric)
+
+    ### TODO: understand what the default linkage 'ward' does
+
+    # setting distance_threshold=0 ensures we compute the full tree.
+    r_thres=100 # km
+    mu_thres = r_thres/rho
+    model = AgglomerativeClustering(metric='haversine', linkage='single', distance_threshold=mu_thres, n_clusters=None)
+    cluster_labels = model.fit_predict(Xrad)
+    print(cluster_labels)
+
+
+    fig,hax = plt.subplots(1)
+    plt.title("Hierarchical Clustering Dendrogram")
+    # plot the top three levels of the dendrogram
+    # plot_dendrogram(model, truncate_mode="level", p=3)
+    plot_dendrogram(model, truncate_mode="level", p=7, ax=hax)
+    plt.xlabel("number of points in node (or index of point if no parenthesis)")
+    plt.ylabel("distance [km]")
+    hax.set_ylim(0.1, 1.0e4)
+    hax.set_yscale('log')
+    plt.show()
+
+
+
+    # points that have no neighbor within the distance threshould count as single-element cluster with their own ID
+    counts_cluster_labels = Counter(cluster_labels)
+    counts_cluster_labels = dict(
+            sorted(counts_cluster_labels.items(), key=lambda _: _[1], reverse=True)
+    )
+    print(counts_cluster_labels)
+
+
+
+    # fixed dummy position in Hamburg for dev purposes
+    my_pos = [10, 53.5]
+
+    # center = cluster_compute_center(1)
+    # print(center)
+    fig,hax = plt.subplots(1)
+    center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=1, indicate_center=True, kwargs={'color':'b'})
+    center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=0, indicate_center=True, kwargs={'color':'r'})
+    print(center)
+    hax.set_xlabel('longitude')
+    hax.set_ylabel('latitude')
+    plt.show()
+
+
+    # TODO:
+    # compute bearing and distance for two biggest clusters in HH
+    # https://www.edwilliams.org/avform147.htm#Crs
+
+if __name__=='__main__':
+    main()

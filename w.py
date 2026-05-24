@@ -3,12 +3,14 @@
 import json
 import matplotlib.pyplot as plt
 import numpy as np
-from nav import get_initial_course
+from nav import get_nav
 
 from scipy.cluster.hierarchy import dendrogram
 from sklearn.cluster import AgglomerativeClustering
 
 from collections import Counter
+
+rho = 6371 # km, radius of Earth (in spherical approximation)
 
 def normalize_coords(d):
     """
@@ -54,13 +56,12 @@ def plot_dendrogram(model, **kwargs):
     # Using 'haversine' metric, distances are in radians
     # -> convert to km.
     my_dist = model.distances_
-    rho = 6370 # radius of Earth (in spherical approximation)
     my_dist *= rho
     linkage_matrix = np.column_stack(
         [model.children_, my_dist, counts]
     ).astype(float)
 
-    print(linkage_matrix)
+    # print(linkage_matrix)
 
     # Plot the corresponding dendrogram
     dendrogram(linkage_matrix, **kwargs)
@@ -75,7 +76,7 @@ def cluster_compute_center(*, cluster_data, cluster_labels, id_cluster: int):
     if len(idx)==0:
         raise ValueError(f'no cluster with id={id_cluster}')
     points = cluster_data[idx,:]
-    print(points)
+    # print(points)
 
     from scipy.optimize import minimize
 
@@ -104,7 +105,7 @@ def cluster_plot(*, hax, cluster_data, cluster_labels, id_cluster: int, indicate
 
 
 def main():
-    with open('data__20260521T0041.json','r') as fin:
+    with open('data.json','r') as fin:
         data_all = json.load(fin)
 
     data = []
@@ -123,7 +124,7 @@ def main():
 
     X = np.vstack((np.array(longitude),np.array(latitude)))
     X = np.transpose(X)
-    print(X)
+    # print(X)
 
 
 
@@ -142,7 +143,6 @@ def main():
 
     from sklearn.metrics.pairwise import haversine_distances
     Xmetric = haversine_distances(Xrad)
-    rho = 6370 # radius of Earth (in spherical approximation)
     Xmetric = rho*Xmetric
     # print(Xmetric)
 
@@ -153,7 +153,7 @@ def main():
     mu_thres = r_thres/rho
     model = AgglomerativeClustering(metric='haversine', linkage='single', distance_threshold=mu_thres, n_clusters=None)
     cluster_labels = model.fit_predict(Xrad)
-    print(cluster_labels)
+    # print(cluster_labels)
 
 
     fig,hax = plt.subplots(1)
@@ -171,30 +171,34 @@ def main():
 
     # points that have no neighbor within the distance threshould count as single-element cluster with their own ID
     counts_cluster_labels = Counter(cluster_labels)
-    counts_cluster_labels = dict(
-            sorted(counts_cluster_labels.items(), key=lambda _: _[1], reverse=True)
-    )
-    print(counts_cluster_labels)
-
+    counts_cluster_labels = sorted(counts_cluster_labels.items(), key=lambda _: _[1], reverse=True)
+    # print(counts_cluster_labels)
+    sorted_cluster_ids = [
+        # convert np.int64 to int
+        int(_[0])
+        for _ in counts_cluster_labels
+    ]
 
 
     # fixed dummy position in Hamburg for dev purposes
-    my_pos = [10, 53.5]
+    my_pos = np.array([10, 53.5])
 
-    # center = cluster_compute_center(1)
-    # print(center)
+    from itertools import cycle
+    iter_colors = cycle(['b','r','g'])
+    cluster_counter=0
     fig,hax = plt.subplots(1)
-    center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=1, indicate_center=True, kwargs={'color':'b'})
-    center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=0, indicate_center=True, kwargs={'color':'r'})
-    print(center)
+    hax.plot(my_pos[0], my_pos[1], 'k+')
+    for id_cluster in sorted_cluster_ids:
+        curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':next(iter_colors)})
+        initial_course,dist_rad = get_nav(my_pos, curr_cluster_center)
+        print(f'ID={id_cluster}, center={curr_cluster_center}, course={initial_course} deg, dist={rho*dist_rad} km')
+        cluster_counter+=1
+        if cluster_counter>=2:
+            break
     hax.set_xlabel('longitude')
     hax.set_ylabel('latitude')
     plt.show()
 
-
-    # TODO:
-    # compute bearing and distance for two biggest clusters in HH
-    # https://www.edwilliams.org/avform147.htm#Crs
 
 if __name__=='__main__':
     main()

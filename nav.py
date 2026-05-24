@@ -1,6 +1,6 @@
 import numpy as np
 
-def get_initial_course(point1, point2):
+def get_nav(point1, point2):
     """
     Literature:
     https://www.edwilliams.org/avform147.htm#Crs access 2026-05-22
@@ -35,5 +35,12 @@ def get_initial_course(point1, point2):
         tc1 = np.arccos(my_clip((np.sin(lat2)-np.sin(lat1)*np.cos(d))/(np.sin(d)*np.cos(lat1))))
     else:
         tc1 = 2*np.pi - np.arccos(my_clip((np.sin(lat2)-np.sin(lat1)*np.cos(d))/(np.sin(d)*np.cos(lat1))))
-    return tc1 * 180/np.pi
+    return (np.degrees(tc1), d)
 
+def get_initial_course(point1, point2):
+    course,dist = get_nav(point1,point2)
+    return course
+
+def get_dist_radians(point1, point2):
+    course,dist = get_nav(point1,point2)
+    return dist

@@ -51,7 +51,6 @@ plt.show()
 
 X = np.vstack((np.array(longitude),np.array(latitude)))
 X = np.transpose(X)
-Xrad = np.radians(X)
 print(X)
 
 
@@ -103,6 +102,9 @@ def plot_dendrogram(model, **kwargs):
 # -> May not be needed, because AgglomerativeClustering supports metric='haversine' out-of-the-box.
 #    But keeping it because it helps to understand what the cluster algorithm did
 #####
+# for the clustering algorithm, we need long/lat in radians
+Xrad = np.radians(X)
+
 from sklearn.metrics.pairwise import haversine_distances
 Xmetric = haversine_distances(Xrad)
 rho = 6370 # radius of Earth (in spherical approximation)

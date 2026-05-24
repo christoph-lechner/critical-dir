@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 
 # for FastAPI servers use at least backend 'Agg' (! matplotlib.pyplot is not thread-safe, see https://matplotlib.org/stable/users/faq.html#work-with-threads !)
+# ... and don't use 'plt'.
 #import matplotlib
 #matplotlib.use('Agg')
+from matplotlib.figure import Figure
+
+# but we still have to define the symbol 'plt' because of the code for interactive operation
 import matplotlib.pyplot as plt
 
 import json
@@ -67,7 +71,7 @@ def spatial_filter_HH(d):
     return is_in_bbox
 
 ### based on code from https://scikit-learn.org/stable/auto_examples/cluster/plot_agglomerative_dendrogram.html#sphx-glr-auto-examples-cluster-plot-agglomerative-dendrogram-py
-def plot_dendrogram(model, **kwargs):
+def plot_dendrogram(hax, model, **kwargs):
     # Create linkage matrix and then plot the dendrogram
 
     # create the counts of samples under each node
@@ -93,7 +97,7 @@ def plot_dendrogram(model, **kwargs):
     # print(linkage_matrix)
 
     # Plot the corresponding dendrogram
-    dendrogram(linkage_matrix, **kwargs)
+    dendrogram(linkage_matrix, ax=hax, **kwargs)
 
 def cluster_compute_center(*, cluster_data, cluster_labels, id_cluster: int):
     """
@@ -135,6 +139,7 @@ def cluster_plot(*, hax, cluster_data, cluster_labels, id_cluster: int, indicate
 
 def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=None, fprefix=None):
     """
+    obj_path: If provided, this switches on storing images to files instead of displaying them
     spatial_filter: function used for spatial filtering. Takes single argument (JSON data point) and returns True if point is to be retained
     """
 
@@ -146,6 +151,14 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     # fprefix should be unique to this session
     if fprefix is None:
         fprefix = 'img_123_'
+
+    def plot_new():
+        if not obj_path:
+            fig,hax = plt.subplots(1)
+        else:
+            fig = Figure()
+            hax = fig.add_subplot(111)
+        return fig,hax
 
     def plot_show_or_save(fig, ftype):
         if not (obj_path and isinstance(obj_path,Path)):
@@ -180,7 +193,8 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     latitude  = [_['latitude']  for _ in data]
 
 
-    fig,hax = plt.subplots(1)
+    # fig,hax = plt.subplots(1)
+    fig,hax = plot_new()
     hax.plot(longitude, latitude, 'o')
     fn['scatter'] = plot_show_or_save(fig,'scatter')
 
@@ -216,13 +230,14 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     # print(cluster_labels)
 
 
-    fig,hax = plt.subplots(1)
-    plt.title("Hierarchical Clustering Dendrogram")
+    # fig,hax = plt.subplots(1)
+    fig,hax = plot_new()
+    hax.set_title("Hierarchical Clustering Dendrogram")
     # plot the top three levels of the dendrogram
-    # plot_dendrogram(model, truncate_mode="level", p=3)
-    plot_dendrogram(model, truncate_mode="level", p=7, ax=hax)
-    plt.xlabel("number of points in node (or index of point if no parenthesis)")
-    plt.ylabel("distance [km]")
+    # plot_dendrogram(hax,model, truncate_mode="level", p=3)
+    plot_dendrogram(hax,model, truncate_mode="level", p=7)
+    hax.set_xlabel("number of points in node (or index of point if no parenthesis)")
+    hax.set_ylabel("distance [km]")
     hax.set_ylim(0.1, 1.0e4)
     hax.set_yscale('log')
     fn['dendrogram'] = plot_show_or_save(fig, 'dendrogram')
@@ -243,7 +258,8 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     from itertools import cycle
     iter_colors = cycle(['b','r','g'])
     cluster_counter=0
-    fig,hax = plt.subplots(1)
+    # fig,hax = plt.subplots(1)
+    fig,hax = plot_new()
     hax.plot(observer_pos[0], observer_pos[1], 'k+')
     for id_cluster in sorted_cluster_ids:
         curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':next(iter_colors)})
@@ -268,5 +284,5 @@ if __name__=='__main__':
     # fixed dummy position in Hamburg for dev purposes
     my_pos = np.array([10, 53.5])
 
-    r = main(datafile='data.json', observer_pos=my_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix='img_234_')
-    print(r['files'])
+    # r = main(datafile='data.json', observer_pos=my_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs'))
+    r = main(datafile='data.json', observer_pos=my_pos)

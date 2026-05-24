@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 
-import json
+# for FastAPI servers use at least backend 'Agg' (! matplotlib.pyplot is not thread-safe, see https://matplotlib.org/stable/users/faq.html#work-with-threads !)
+#import matplotlib
+#matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+
+import json
 import numpy as np
 import os
 import time
@@ -143,13 +147,14 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     if fprefix is None:
         fprefix = 'img_123_'
 
-    def plot_show_or_save(ftype):
+    def plot_show_or_save(fig, ftype):
         if not (obj_path and isinstance(obj_path,Path)):
             plt.show()
             return
         rel_path = (fprefix+ftype+'.png')
         absolute_path = obj_path / rel_path
-        plt.savefig(absolute_path, dpi=150, bbox_inches='tight')
+        fig.savefig(absolute_path, dpi=150, bbox_inches='tight')
+        plt.close(fig) # frees resources
         # returning the relative path since the webclient sees a different path layout than the server
         return rel_path
 
@@ -177,7 +182,7 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
 
     fig,hax = plt.subplots(1)
     hax.plot(longitude, latitude, 'o')
-    fn['scatter'] = plot_show_or_save('scatter')
+    fn['scatter'] = plot_show_or_save(fig,'scatter')
 
     X = np.vstack((np.array(longitude),np.array(latitude)))
     X = np.transpose(X)
@@ -220,7 +225,7 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     plt.ylabel("distance [km]")
     hax.set_ylim(0.1, 1.0e4)
     hax.set_yscale('log')
-    fn['dendrogram'] = plot_show_or_save('dendrogram')
+    fn['dendrogram'] = plot_show_or_save(fig, 'dendrogram')
 
 
 
@@ -254,7 +259,7 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
             break
     hax.set_xlabel('longitude')
     hax.set_ylabel('latitude')
-    fn['clusters'] = plot_show_or_save('clusters')
+    fn['clusters'] = plot_show_or_save(fig, 'clusters')
 
     return {'files':fn, 'diag_info': diag_info, 'clusters':cluster_infos}
 

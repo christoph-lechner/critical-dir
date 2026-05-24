@@ -1,5 +1,7 @@
+pytest
 numpy
 matplotlib
 scipy
 scikit-learn
-pytest
+uvicorn
+fastapi

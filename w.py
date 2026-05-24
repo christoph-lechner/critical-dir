@@ -8,6 +8,7 @@ import time
 from scipy.cluster.hierarchy import dendrogram
 from sklearn.cluster import AgglomerativeClustering
 from collections import Counter
+from pathlib import Path
 from nav import get_nav
 
 
@@ -109,10 +110,24 @@ def cluster_plot(*, hax, cluster_data, cluster_labels, id_cluster: int, indicate
         return center
 
 
-def main(*,datafile='data.json', observer_pos, spatial_filter=None):
+def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=None, fprefix=None):
     """
     spatial_filter: function used for spatial filtering. Takes single argument (JSON data point) and returns True if point is to be retained
     """
+    # fprefix should be unique to this session
+    if fprefix is None:
+        fprefix = 'img_123_'
+
+    def plot_show_or_save(ftype):
+        if not (obj_path and isinstance(obj_path,Path)):
+            plt.show()
+            return
+        rel_path = (fprefix+ftype+'.png')
+        absolute_path = obj_path / rel_path
+        plt.savefig(absolute_path, dpi=150, bbox_inches='tight')
+        # returning the relative path since the webclient sees a different path layout than the server
+        return rel_path
+
     # Check age of data file (note: using functions returning ints to avoid loss of precision caused by floats)
     statinfo = os.stat(datafile)
     # print(statinfo.st_mtime)
@@ -133,14 +148,15 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None):
     longitude = [_['longitude'] for _ in data]
     latitude  = [_['latitude']  for _ in data]
 
+    fn = {}
+
     fig,hax = plt.subplots(1)
     hax.plot(longitude, latitude, 'o')
-    plt.show()
+    fn['scatter'] = plot_show_or_save('scatter')
 
     X = np.vstack((np.array(longitude),np.array(latitude)))
     X = np.transpose(X)
     # print(X)
-
 
 
     """
@@ -179,7 +195,7 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None):
     plt.ylabel("distance [km]")
     hax.set_ylim(0.1, 1.0e4)
     hax.set_yscale('log')
-    plt.show()
+    fn['dendrogram'] = plot_show_or_save('dendrogram')
 
 
 
@@ -209,11 +225,14 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None):
             break
     hax.set_xlabel('longitude')
     hax.set_ylabel('latitude')
-    plt.show()
+    fn['clusters'] = plot_show_or_save('clusters')
+
+    return {'files':fn}
 
 
 if __name__=='__main__':
     # fixed dummy position in Hamburg for dev purposes
     my_pos = np.array([10, 53.5])
 
-    main(datafile='data.json', observer_pos=my_pos)
+    r = main(datafile='data.json', observer_pos=my_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix='img_234_')
+    print(r['files'])

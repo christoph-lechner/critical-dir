@@ -1,5 +1,5 @@
 import numpy as np
-from nav import get_initial_course
+from nav import get_initial_course,get_dist_radians
 
 """
 Helper function and related testing
@@ -16,7 +16,7 @@ def angle_comp(angle1, angle2, max_dev=1e-3):
         return True
     return False
 
-def test_helpers(capsys):
+def test_helpers():
     assert angle_comp(10,10, max_dev=1)
     assert angle_comp(0,359.9, max_dev=1)
     assert angle_comp(12,10, max_dev=1)==False
@@ -52,6 +52,15 @@ def test_nav_dirs(capsys):
     assert angle_comp(get_initial_course(my_pos, np.add(my_pos,[ 0.01,0])), 90.0, max_dev=0.1)
     assert angle_comp(get_initial_course(my_pos, np.add(my_pos,[-0.01,0])), 270.0, max_dev=0.1)
 
-    # worked example: LAX to JFK (remember that ref https://www.edwilliams.org/avform147.htm uses flipped sign conventions for long.)
-    assert angle_comp(get_initial_course([-(118+24/60), 33+57/60], [-(73+47/60), 40+38/60]), 65.9, max_dev=0.1)
+    # Worked example:
+    # LAX to JFK (remember that ref https://www.edwilliams.org/avform147.htm uses flipped sign conventions for long.)
+    # 65.9 deg, great circle angle 0.623585 rad
+    lax=[-(118+24/60), 33+57/60]
+    jfk=[-(73+47/60), 40+38/60]
+    assert angle_comp(get_initial_course(lax, jfk), 65.9, max_dev=0.1)
+    assert np.abs(get_dist_radians(lax, jfk) - 0.623585)<2e-6
 
+
+def test_nav_dist():
+    dist_rad = get_dist_radians([0,0], [90,0])
+    assert np.abs(dist_rad - np.pi/2)<1e-6

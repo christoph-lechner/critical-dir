@@ -2,6 +2,8 @@ import numpy as np
 
 def get_nav(point1, point2):
     """
+    point1 is starting coordinates
+
     Literature:
     https://www.edwilliams.org/avform147.htm#Crs access 2026-05-22
 

@@ -3,14 +3,19 @@
 import json
 import matplotlib.pyplot as plt
 import numpy as np
-from nav import get_nav
-
+import os
+import time
 from scipy.cluster.hierarchy import dendrogram
 from sklearn.cluster import AgglomerativeClustering
-
 from collections import Counter
+from nav import get_nav
 
-rho = 6371 # km, radius of Earth (in spherical approximation)
+
+cfg = {
+    'warn_file_age': 120, # seconds
+    'r_thres': 100, # km, radius used for clustering (note: converted to great-circle angle using radius of Earth)
+    'rho': 6371, # km, radius of Earth (in spherical approximation)
+}
 
 def normalize_coords(d):
     """
@@ -23,7 +28,7 @@ def normalize_coords(d):
     my_helper(d,'latitude')
     return d
 
-def spatial_filter_criterion(d):
+def spatial_filter_HH(d):
     """
     Returns False if spatial filter criterion is not met OR if coordinate data is missing
     """
@@ -56,7 +61,7 @@ def plot_dendrogram(model, **kwargs):
     # Using 'haversine' metric, distances are in radians
     # -> convert to km.
     my_dist = model.distances_
-    my_dist *= rho
+    my_dist *= cfg['rho']
     linkage_matrix = np.column_stack(
         [model.children_, my_dist, counts]
     ).astype(float)
@@ -104,15 +109,25 @@ def cluster_plot(*, hax, cluster_data, cluster_labels, id_cluster: int, indicate
         return center
 
 
-def main():
-    with open('data.json','r') as fin:
+def main(*,datafile='data.json', observer_pos, spatial_filter=None):
+    """
+    spatial_filter: function used for spatial filtering. Takes single argument (JSON data point) and returns True if point is to be retained
+    """
+    # Check age of data file (note: using functions returning ints to avoid loss of precision caused by floats)
+    statinfo = os.stat(datafile)
+    # print(statinfo.st_mtime)
+    age_datafile = time.time_ns()/1000000000 - statinfo.st_mtime
+    if age_datafile>cfg['warn_file_age']:
+        print(f'WARNING: file is {age_datafile} seconds old')
+
+    with open(datafile,'r') as fin:
         data_all = json.load(fin)
 
     data = []
     for d in data_all:
         d = normalize_coords(d)
-        #if spatial_filter_criterion(d):
-        #    data.append(d)
+        if spatial_filter and callable(spatial_filter) and spatial_filter(d)==False:
+            continue
         data.append(d)
 
     longitude = [_['longitude'] for _ in data]
@@ -143,14 +158,13 @@ def main():
 
     from sklearn.metrics.pairwise import haversine_distances
     Xmetric = haversine_distances(Xrad)
-    Xmetric = rho*Xmetric
+    Xmetric = cfg['rho']*Xmetric
     # print(Xmetric)
 
     ### TODO: understand what the default linkage 'ward' does
 
     # setting distance_threshold=0 ensures we compute the full tree.
-    r_thres=100 # km
-    mu_thres = r_thres/rho
+    mu_thres = cfg['r_thres']/cfg['rho']
     model = AgglomerativeClustering(metric='haversine', linkage='single', distance_threshold=mu_thres, n_clusters=None)
     cluster_labels = model.fit_predict(Xrad)
     # print(cluster_labels)
@@ -180,18 +194,16 @@ def main():
     ]
 
 
-    # fixed dummy position in Hamburg for dev purposes
-    my_pos = np.array([10, 53.5])
-
     from itertools import cycle
     iter_colors = cycle(['b','r','g'])
     cluster_counter=0
     fig,hax = plt.subplots(1)
-    hax.plot(my_pos[0], my_pos[1], 'k+')
+    hax.plot(observer_pos[0], observer_pos[1], 'k+')
     for id_cluster in sorted_cluster_ids:
         curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':next(iter_colors)})
-        initial_course,dist_rad = get_nav(my_pos, curr_cluster_center)
-        print(f'ID={id_cluster}, center={curr_cluster_center}, course={initial_course} deg, dist={rho*dist_rad} km')
+        initial_course,dist_rad = get_nav(observer_pos, curr_cluster_center)
+        curr_cluster_nele = dict(counts_cluster_labels)[id_cluster]
+        print(f"ID={id_cluster}: N={curr_cluster_nele}, center={curr_cluster_center}, course={initial_course} deg, dist={cfg['rho']*dist_rad} km")
         cluster_counter+=1
         if cluster_counter>=2:
             break
@@ -201,4 +213,7 @@ def main():
 
 
 if __name__=='__main__':
-    main()
+    # fixed dummy position in Hamburg for dev purposes
+    my_pos = np.array([10, 53.5])
+
+    main(datafile='data.json', observer_pos=my_pos)

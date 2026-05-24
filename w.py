@@ -9,12 +9,31 @@ from scipy.cluster.hierarchy import dendrogram
 from sklearn.cluster import AgglomerativeClustering
 from collections import Counter
 from pathlib import Path
+from dataclasses import dataclass
 from nav import get_nav
+
+@dataclass
+class ClusterInfo:
+    cluster_ID: int
+    center: np.array
+    N: int
+    course: float
+    dist: float
+    def __str__(self):
+        return f"ID={self.cluster_ID}: N={self.N}, center={self.center}, course={self.course} deg, dist={self.dist}"
+    def table_header(self):
+        # part of dervied dataclass to ensure that header and string representation of rows have matching layout
+        return '<tr><td>(ID)</td><td>N</td><td>center</td><td>course [deg]</td><td>dist [km]</td></tr>'
+    def as_html(self):
+        # replace by jinja template?
+        return f"<tr><td>{self.cluster_ID}</td><td>{self.N}</td><td>{self.center[0]:.2f}, {self.center[1]:.2f}</td><td>{self.course:.2f}</td><td>{self.dist:.2f}</td></tr>"
 
 
 cfg = {
     'warn_file_age': 120, # seconds
     'r_thres': 100, # km, radius used for clustering (note: converted to great-circle angle using radius of Earth)
+    'max_clusters': 10002,
+    ### constants ###
     'rho': 6371, # km, radius of Earth (in spherical approximation)
 }
 
@@ -114,6 +133,12 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     """
     spatial_filter: function used for spatial filtering. Takes single argument (JSON data point) and returns True if point is to be retained
     """
+
+    ### HERE WE COLLECT INFOS TO BE RETURNED TO CALLER ###
+    diag_info = []
+    cluster_infos = []
+    fn = {}
+
     # fprefix should be unique to this session
     if fprefix is None:
         fprefix = 'img_123_'
@@ -133,6 +158,7 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     # print(statinfo.st_mtime)
     age_datafile = time.time_ns()/1000000000 - statinfo.st_mtime
     if age_datafile>cfg['warn_file_age']:
+        diag_info.append(f'WARNING: file is {age_datafile} seconds old')
         print(f'WARNING: file is {age_datafile} seconds old')
 
     with open(datafile,'r') as fin:
@@ -148,7 +174,6 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     longitude = [_['longitude'] for _ in data]
     latitude  = [_['latitude']  for _ in data]
 
-    fn = {}
 
     fig,hax = plt.subplots(1)
     hax.plot(longitude, latitude, 'o')
@@ -217,17 +242,21 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     hax.plot(observer_pos[0], observer_pos[1], 'k+')
     for id_cluster in sorted_cluster_ids:
         curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':next(iter_colors)})
+        #
         initial_course,dist_rad = get_nav(observer_pos, curr_cluster_center)
         curr_cluster_nele = dict(counts_cluster_labels)[id_cluster]
-        print(f"ID={id_cluster}: N={curr_cluster_nele}, center={curr_cluster_center}, course={initial_course} deg, dist={cfg['rho']*dist_rad} km")
+        curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, center=curr_cluster_center, course=initial_course, dist=cfg['rho']*dist_rad)
+        cluster_infos.append(curr_ci)
+        print(curr_ci)
+        #
         cluster_counter+=1
-        if cluster_counter>=2:
+        if cluster_counter>=cfg['max_clusters']:
             break
     hax.set_xlabel('longitude')
     hax.set_ylabel('latitude')
     fn['clusters'] = plot_show_or_save('clusters')
 
-    return {'files':fn}
+    return {'files':fn, 'diag_info': diag_info, 'clusters':cluster_infos}
 
 
 if __name__=='__main__':

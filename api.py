@@ -65,7 +65,7 @@ def location_worker(user_pos, flag_iso=True):
         return r
 
     ci = r['clusters']
-    ci = sorted(ci, key=lambda _: _.N, reverse=True)
+    ci = sorted(ci, key=lambda _: (_.N,-_.dist), reverse=True) # Note: tuple as sort key -> force sort order for clusters with identical N, list closer clusters first (if first element is identical, second element determines sort order)
     ci_dist = sorted(ci, key=lambda _: _.dist, reverse=False)
     diag_info += '<h3>Clusters (lowest distance first)</h3>'
     diag_info += ci_as_table(ci_dist)
@@ -73,7 +73,7 @@ def location_worker(user_pos, flag_iso=True):
     diag_info += ci_as_table(ci)
 
     # Keys of images to present FIRST (in this order)
-    top_files = ['clusters']
+    top_files = ['clusters_local','clusters']
 
     html_imgs = ""
     print(r['files'])

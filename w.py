@@ -18,6 +18,7 @@ from sklearn.cluster import AgglomerativeClustering
 from collections import Counter
 from pathlib import Path
 from dataclasses import dataclass
+import geopandas as gpd
 from nav import get_nav
 
 @dataclass
@@ -67,7 +68,7 @@ def spatial_filter_HH(d):
         return False
     
     # check against rect containing the State of Hamburg
-    is_in_bbox = (9.7<=longitude) and (longitude<=10.4) and (53.35<=latitude) and (latitude<=53.75)
+    is_in_bbox = (9.7<=longitude) and (longitude<=10.35) and (53.35<=latitude) and (latitude<=53.75)
     return is_in_bbox
 
 ### based on code from https://scikit-learn.org/stable/auto_examples/cluster/plot_agglomerative_dendrogram.html#sphx-glr-auto-examples-cluster-plot-agglomerative-dendrogram-py
@@ -124,6 +125,19 @@ def cluster_compute_center(*, cluster_data, cluster_labels, id_cluster: int):
         args=(points,)
     )
     return result.x
+
+def plot_city(hax):
+    """
+    Helper function to plot geographical information such as city limits
+    """
+    gdf = gpd.read_file('mapdata/Hamburg_Stadtteilestatistik.shp')
+    print(gdf.crs) # info from .prj file
+
+    # Note: could add map using contextily, here we do need Web Mercator (EPSG:3857)
+    # list of EPSG codes https://en.wikipedia.org/wiki/EPSG_Geodetic_Parameter_Dataset
+    gdf = gdf.to_crs(epsg=4326) # latitude/longitude
+    gdf.plot(ax=hax, color='white', edgecolor='grey')
+
 
 def cluster_plot(*, hax, cluster_data, cluster_labels, id_cluster: int, indicate_center=False, kwargs):
     idx = [_ for _,x in enumerate(cluster_labels) if x==id_cluster]
@@ -193,7 +207,6 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     latitude  = [_['latitude']  for _ in data]
 
 
-    # fig,hax = plt.subplots(1)
     fig,hax = plot_new()
     hax.plot(longitude, latitude, 'o')
     hax.set_title('Points as loaded from JSON Data')
@@ -231,7 +244,6 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     # print(cluster_labels)
 
 
-    # fig,hax = plt.subplots(1)
     fig,hax = plot_new()
     hax.set_title("Hierarchical Clustering Dendrogram")
     # plot the top three levels of the dendrogram
@@ -255,34 +267,46 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
         for _ in counts_cluster_labels
     ]
 
+    def geoplot_cluster_analysis(only_local=False):
+        from itertools import cycle
+        iter_colors = cycle(['b','r','g'])
+        cluster_counter=0
 
-    from itertools import cycle
-    iter_colors = cycle(['b','r','g'])
-    cluster_counter=0
-    # fig,hax = plt.subplots(1)
-    fig,hax = plot_new()
-    hax.plot(observer_pos[0], observer_pos[1], 'kx', label='your position')
-    for id_cluster in sorted_cluster_ids:
-        # if requested by user, ignore single-element 'clusters'
-        curr_cluster_nele = dict(counts_cluster_labels)[id_cluster]
-        if exclude_isolated_points and curr_cluster_nele<=1:
-            continue
+        fig,hax = plot_new()
+        if only_local:
+            plot_city(hax)
+        hax.plot(observer_pos[0], observer_pos[1], 'kx', label='your position')
+        for id_cluster in sorted_cluster_ids:
+            # if requested by user, ignore single-element 'clusters'
+            curr_cluster_nele = dict(counts_cluster_labels)[id_cluster]
+            if exclude_isolated_points and curr_cluster_nele<=1:
+                continue
+            #
+            curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':next(iter_colors)})
+            initial_course,dist_rad = get_nav(observer_pos, curr_cluster_center)
+            #
+            curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, center=curr_cluster_center, course=initial_course, dist=cfg['rho']*dist_rad)
+            cluster_infos.append(curr_ci)
+            print(curr_ci)
+            #
+            cluster_counter+=1
+            if cluster_counter>=cfg['max_clusters']:
+                break
+        hax.set_xlabel('longitude')
+        hax.set_ylabel('latitude')
+        hax.set_title('Result of Clustering Analysis')
+        if only_local:
+            hax.set_xlim(9.7, 10.35)
+            hax.set_ylim(53.35, 53.75)
+        fig.legend()
         #
-        curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':next(iter_colors)})
-        initial_course,dist_rad = get_nav(observer_pos, curr_cluster_center)
-        #
-        curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, center=curr_cluster_center, course=initial_course, dist=cfg['rho']*dist_rad)
-        cluster_infos.append(curr_ci)
-        print(curr_ci)
-        #
-        cluster_counter+=1
-        if cluster_counter>=cfg['max_clusters']:
-            break
-    hax.set_xlabel('longitude')
-    hax.set_ylabel('latitude')
-    hax.set_title('Result of Clustering Analysis')
-    fig.legend()
-    fn['clusters'] = plot_show_or_save(fig, 'clusters')
+        my_file_key = 'clusters'
+        if only_local:
+            my_file_key = 'clusters_local'
+        fn[my_file_key] = plot_show_or_save(fig, my_file_key)
+
+    geoplot_cluster_analysis(only_local=False)
+    geoplot_cluster_analysis(only_local=True)
 
     return {'files':fn, 'diag_info': diag_info, 'clusters':cluster_infos}
 

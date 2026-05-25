@@ -45,13 +45,19 @@ async def req_catch_all(request: Request):
 def location_worker(user_pos, flag_iso=True):
     datadir = Path('/home/cl/work/criticalmaps--richtungspfeil/cmdata')
     freshest_datafile_info = identify_most_recent_file(datadir)
-    freshest_datafile = datadir / freshest_datafile_info.fn
+    # handle special case if there are no datafiles in the directory
+    if freshest_datafile_info is None:
+        return {
+            'html': '<h3>There is no data to plot</h3>',
+            'diag': 'There is no data to plot'
+        }
 
     # generate "unique" prefix for image files
     tnow = datetime.datetime.now()
     tstr = tnow.strftime('%Y%m%dT%H%M%S.%f')
     fprefix = f'img_{tstr}_'
 
+    freshest_datafile = datadir / freshest_datafile_info.fn
     r = main(datafile=freshest_datafile, observer_pos=user_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix, exclude_isolated_points=flag_iso)
 
     diag_info = '<h3>Diag Infos</h3>'

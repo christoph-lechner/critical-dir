@@ -23,6 +23,11 @@ def get_cmaps_data():
     # But it turns out the headers are not needed.
     headers = {}
 
-    r = requests.get(api_url, headers=headers)
-    r.raise_for_status()
+    # Consider to install timeout raising SIGALRM before sending out API request.
+    # Otherwise, total execution time is beyond our control (for instance, if server reacts very slowly).
+
+    timeout_connect = 10
+    timeout_read = 10
+    r = requests.get(api_url, headers=headers, timeout=(timeout_connect,timeout_read))
+    r.raise_for_status() # exception when HTTP status code is 4xx or 5xx
     return r.text

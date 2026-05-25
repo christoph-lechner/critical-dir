@@ -1,0 +1,2 @@
+# ignore .png files written by the tool
+objs/**

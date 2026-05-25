@@ -20,6 +20,7 @@ from pathlib import Path
 from dataclasses import dataclass
 import geopandas as gpd
 from nav import get_nav
+from my_util_files import get_list_of_files
 
 @dataclass
 class ClusterInfo:
@@ -57,6 +58,40 @@ def normalize_coords(d):
     my_helper(d,'longitude')
     my_helper(d,'latitude')
     return d
+
+def load_cmap_jsonfile(datafile, *, diag_info=[], spatial_filter=None, warn_old=True):
+    # Check age of data file (note: using functions returning ints to avoid loss of precision caused by floats)
+    statinfo = os.stat(datafile)
+    # print(statinfo.st_mtime)
+    age_datafile = time.time_ns()/1000000000 - statinfo.st_mtime
+    if age_datafile>cfg['warn_file_age']:
+        diag_info.append(f'WARNING: file is {age_datafile} seconds old')
+        print(f'WARNING: file is {age_datafile} seconds old')
+
+    with open(datafile,'r') as fin:
+        data_all = json.load(fin)
+
+    data = []
+    for d in data_all:
+        d = normalize_coords(d)
+        if spatial_filter and callable(spatial_filter) and spatial_filter(d)==False:
+            continue
+        data.append(d)
+
+    longitude = [_['longitude'] for _ in data]
+    latitude  = [_['latitude']  for _ in data]
+
+    #fig,hax = plot_new()
+    #hax.plot(longitude, latitude, 'o')
+    #hax.set_title('Points as loaded from JSON Data')
+    #fn['scatter'] = plot_show_or_save(fig,'scatter')
+
+    X = np.vstack((np.array(longitude),np.array(latitude)))
+    X = np.transpose(X)
+    # print(X)
+
+    return data,X
+
 
 def spatial_filter_HH(d):
     """
@@ -141,6 +176,9 @@ def plot_city(hax):
 
 
 def cluster_plot(*, hax, cluster_data, cluster_labels, id_cluster: int, indicate_center=False, kwargs):
+    """
+    cluster_data: just the coordinate matrix, holding longitude and latitude for all data points
+    """
     idx = [_ for _,x in enumerate(cluster_labels) if x==id_cluster]
     if len(idx)==0:
         print(f'warning: no cluster to plot for id={id_cluster}')
@@ -150,6 +188,52 @@ def cluster_plot(*, hax, cluster_data, cluster_labels, id_cluster: int, indicate
         center = cluster_compute_center(cluster_data=cluster_data, cluster_labels=cluster_labels, id_cluster=id_cluster)
         hax.plot(center[0], center[1], '+', **kwargs)
         return center
+
+def cluster_plot_persistence(*, hax, cluster_complete_data, cluster_labels, id_cluster: int, kwargs):
+    """
+    cluster_complete_data: expects list of dicts, as loaded from single JSON file
+    """
+    idx = [_ for _,x in enumerate(cluster_labels) if x==id_cluster]
+    if len(idx)==0:
+        print(f'warning: no cluster to plot for id={id_cluster}')
+
+    # collect device IDs for all points in this cluster
+    traces = {}
+    cluster_device_IDs=[]
+    for p in idx:
+        cluster_device_IDs.append(cluster_complete_data[p]['device'])
+        traces[cluster_complete_data[p]['device']] = []
+
+
+    # collect files to process
+    import datetime
+    datadir = Path('/home/cl/work/criticalmaps--richtungspfeil/cmdata')
+    lof_unsorted = get_list_of_files(datadir)
+    lof_sorted = sorted(lof_unsorted, key=lambda _: _.ts, reverse=True)
+    t2 = datetime.datetime(2026, 5, 25, 15, 30)
+    t1 = t2 + datetime.timedelta(minutes=-60)
+    filter_func = lambda _: t1<=_.ts and _.ts<=t2
+    lof = list( filter(filter_func, lof_sorted) )
+
+    cntr=0
+    for curr_f in lof:
+        print(f'**** Loading file {curr_f.fn}')
+        data,_ = load_cmap_jsonfile(datadir/curr_f.fn, warn_old=False)
+        for curr_dp in data:
+            for curr_clusterid in cluster_device_IDs:
+                if curr_dp['device'] == curr_clusterid:
+                    traces[curr_clusterid].append(curr_dp)
+
+    for curr_deviceid,curr_tracedata in traces.items():
+        print(curr_deviceid)
+        if len(curr_tracedata)<=2:
+            print(f'device={curr_deviceid} insufficient data for trace plot')
+        longitude = [_['longitude'] for _ in curr_tracedata]
+        latitude  = [_['latitude']  for _ in curr_tracedata]
+        timestamps= [_['timestamp'] for _ in curr_tracedata]
+        hax.plot(longitude, latitude, 'k')
+        print(list(set(timestamps)))
+    
 
 
 def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=None, fprefix=None, exclude_isolated_points=True):
@@ -186,40 +270,7 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
         # returning the relative path since the webclient sees a different path layout than the server
         return rel_path
 
-    def load_cmap_jsonfile(datafile, *, warn_old=True):
-        # Check age of data file (note: using functions returning ints to avoid loss of precision caused by floats)
-        statinfo = os.stat(datafile)
-        # print(statinfo.st_mtime)
-        age_datafile = time.time_ns()/1000000000 - statinfo.st_mtime
-        if age_datafile>cfg['warn_file_age']:
-            diag_info.append(f'WARNING: file is {age_datafile} seconds old')
-            print(f'WARNING: file is {age_datafile} seconds old')
-
-        with open(datafile,'r') as fin:
-            data_all = json.load(fin)
-
-        data = []
-        for d in data_all:
-            d = normalize_coords(d)
-            if spatial_filter and callable(spatial_filter) and spatial_filter(d)==False:
-                continue
-            data.append(d)
-
-        longitude = [_['longitude'] for _ in data]
-        latitude  = [_['latitude']  for _ in data]
-
-        fig,hax = plot_new()
-        hax.plot(longitude, latitude, 'o')
-        hax.set_title('Points as loaded from JSON Data')
-        fn['scatter'] = plot_show_or_save(fig,'scatter')
-
-        X = np.vstack((np.array(longitude),np.array(latitude)))
-        X = np.transpose(X)
-        # print(X)
-
-        return data,X
-
-    data,X = load_cmap_jsonfile(datafile)
+    data,X = load_cmap_jsonfile(datafile, diag_info=diag_info, spatial_filter=spatial_filter)
 
     """
     Cluster and plot dendrogram
@@ -287,6 +338,7 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
                 continue
             #
             curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':next(iter_colors)})
+            cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, kwargs={})
             initial_course,dist_rad = get_nav(observer_pos, curr_cluster_center)
             #
             if store_ci:
@@ -313,7 +365,7 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     geoplot_cluster_analysis(only_local=False)
     geoplot_cluster_analysis(only_local=True, store_ci=False)
 
-    return {'files':fn, 'diag_info': diag_info, 'clusters':cluster_infos}
+    return {'files':fn, 'diag_info':diag_info, 'clusters':cluster_infos}
 
 
 if __name__=='__main__':
@@ -321,4 +373,4 @@ if __name__=='__main__':
     my_pos = np.array([10, 53.5])
 
     # r = main(datafile='data.json', observer_pos=my_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs'))
-    r = main(datafile='data.json', observer_pos=my_pos)
+    r = main(datafile='cmdata/data_20260525T153000_002850.json', observer_pos=my_pos)

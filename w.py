@@ -267,7 +267,7 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
         for _ in counts_cluster_labels
     ]
 
-    def geoplot_cluster_analysis(only_local=False):
+    def geoplot_cluster_analysis(*, only_local=False, store_ci=True):
         from itertools import cycle
         iter_colors = cycle(['b','r','g'])
         cluster_counter=0
@@ -285,9 +285,10 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
             curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':next(iter_colors)})
             initial_course,dist_rad = get_nav(observer_pos, curr_cluster_center)
             #
-            curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, center=curr_cluster_center, course=initial_course, dist=cfg['rho']*dist_rad)
-            cluster_infos.append(curr_ci)
-            print(curr_ci)
+            if store_ci:
+                curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, center=curr_cluster_center, course=initial_course, dist=cfg['rho']*dist_rad)
+                cluster_infos.append(curr_ci)
+                print(curr_ci)
             #
             cluster_counter+=1
             if cluster_counter>=cfg['max_clusters']:
@@ -306,7 +307,7 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
         fn[my_file_key] = plot_show_or_save(fig, my_file_key)
 
     geoplot_cluster_analysis(only_local=False)
-    geoplot_cluster_analysis(only_local=True)
+    geoplot_cluster_analysis(only_local=True, store_ci=False)
 
     return {'files':fn, 'diag_info': diag_info, 'clusters':cluster_infos}
 

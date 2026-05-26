@@ -80,7 +80,7 @@ def data_add_hashes(cur, stg_dest, stg_src):
 def data_dedupl(cur, stg_dest, stg_src):
     cur.execute(
         f"""
-            CREATE TABLE {stg_dest} AS
+            CREATE TEMPORARY TABLE {stg_dest} AS
             WITH q AS (
                 SELECT
                     *, ROW_NUMBER() OVER(PARTITION BY _h) AS _rn

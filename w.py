@@ -144,9 +144,10 @@ def cluster_plot(*, hax, cluster_data, cluster_labels, id_cluster: int, indicate
         hax.plot(center[0], center[1], '+', **kwargs)
         return center
 
-def cluster_plot_persistence(*, hax, cluster_complete_data, cluster_labels, id_cluster: int, kwargs):
+def cluster_plot_persistence(*, hax, cluster_complete_data, cluster_labels, id_cluster: int, trace_persistence=900, kwargs):
     """
     cluster_complete_data: expects list of dicts, as loaded from single JSON file
+    trace_persistence: persistence of trace, in seconds
     """
     idx = [_ for _,x in enumerate(cluster_labels) if x==id_cluster]
     if len(idx)==0:
@@ -159,42 +160,32 @@ def cluster_plot_persistence(*, hax, cluster_complete_data, cluster_labels, id_c
         cluster_device_IDs.append(cluster_complete_data[p]['device'])
         traces[cluster_complete_data[p]['device']] = []
 
+    import psycopg
+    from psycopg.rows import dict_row
+    from db_conn import get_db_conn
 
-    # collect files to process
-    import datetime
-    datadir = Path('/home/cl/work/criticalmaps--richtungspfeil/cmdata')
-    lof_unsorted = get_list_of_files(datadir)
-    lof_sorted = sorted(lof_unsorted, key=lambda _: _.ts, reverse=True)
-    t2 = datetime.datetime(2026, 5, 25, 15, 30)
-    t1 = t2 + datetime.timedelta(minutes=-60)
-    filter_func = lambda _: t1<=_.ts and _.ts<=t2
-    lof = list( filter(filter_func, lof_sorted) )
+    # establish DB connection
+    # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
+    conn = get_db_conn()
+    cur = conn.cursor(row_factory=dict_row)
 
-    cntr=0
-    for curr_f in lof:
-        print(f'**** Loading file {curr_f.fn}')
-        def cb_age(age):
-            if age>cfg['warn_file_age']:
-                diag_info.append(f'WARNING: file is {age} seconds old')
-                print(f'WARNING: file is {age} seconds old')
+    for curr_clusterid in cluster_device_IDs:
+        timecutoff_epoch = time.time() - trace_persistence
+        cur.execute(
+            """
+            SELECT longitude,latitude FROM criticalmaps_data WHERE deviceid=%s AND timestamp>=%s ORDER BY timestamp DESC;
+            """,
+            (curr_clusterid,timecutoff_epoch)
+        )
+        res_rows = cur.fetchall()
+        if len(res_rows)<=2:
+            print(f'deviceid={curr_clusterid}: insufficient data for trace plot')
+            continue
 
-        data,_ = load_cmap_jsonfile(datadir/curr_f.fn, cb_diag_file_age=cb_age)
-        for curr_dp in data:
-            for curr_clusterid in cluster_device_IDs:
-                if curr_dp['device'] == curr_clusterid:
-                    traces[curr_clusterid].append(curr_dp)
-
-    for curr_deviceid,curr_tracedata in traces.items():
-        print(curr_deviceid)
-        if len(curr_tracedata)<=2:
-            print(f'device={curr_deviceid} insufficient data for trace plot')
-        longitude = [_['longitude'] for _ in curr_tracedata]
-        latitude  = [_['latitude']  for _ in curr_tracedata]
-        timestamps= [_['timestamp'] for _ in curr_tracedata]
-        hax.plot(longitude, latitude, 'k')
-        print(list(set(timestamps)))
-    
-
+        longitude = [_['longitude'] for _ in res_rows]
+        latitude  = [_['latitude']  for _ in res_rows]
+        hax.plot(longitude, latitude, '-', **kwargs)
+        
 
 def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=None, fprefix=None, exclude_isolated_points=True):
     """
@@ -302,8 +293,10 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
             if exclude_isolated_points and curr_cluster_nele<=1:
                 continue
             #
-            curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':next(iter_colors)})
-            cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, kwargs={})
+            # for correct z stacking: plot persistence traces first (would be better to plot *all* persistence traces first, then all current positions)
+            curr_color = next(iter_colors)
+            cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, kwargs={'color':curr_color, 'alpha':0.5})
+            curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':curr_color})
             initial_course,dist_rad = get_nav(observer_pos, curr_cluster_center)
             #
             if store_ci:
@@ -338,5 +331,4 @@ if __name__=='__main__':
     my_pos = np.array([10, 53.5])
 
     # r = main(datafile='data.json', observer_pos=my_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs'))
-    # r = main(datafile='cmdata/data_20260525T153000_002850.json', observer_pos=my_pos)
-    r = main(datafile='data.json', observer_pos=my_pos)
+    r = main(datafile='cmdata/data_20260526T154830_002682.json', observer_pos=my_pos, exclude_isolated_points=False)

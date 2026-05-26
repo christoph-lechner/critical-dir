@@ -22,6 +22,10 @@ import geopandas as gpd
 from nav import get_nav
 from my_util_files import get_list_of_files
 from cmaps_util import load_cmap_jsonfile
+import psycopg
+from psycopg.rows import dict_row
+from db_conn import get_db_conn
+
 
 @dataclass
 class ClusterInfo:
@@ -152,34 +156,26 @@ def cluster_plot_persistence(*, hax, cluster_complete_data, cluster_labels, id_c
     idx = [_ for _,x in enumerate(cluster_labels) if x==id_cluster]
     if len(idx)==0:
         print(f'warning: no cluster to plot for id={id_cluster}')
-
-    # collect device IDs for all points in this cluster
-    traces = {}
-    cluster_device_IDs=[]
-    for p in idx:
-        cluster_device_IDs.append(cluster_complete_data[p]['device'])
-        traces[cluster_complete_data[p]['device']] = []
-
-    import psycopg
-    from psycopg.rows import dict_row
-    from db_conn import get_db_conn
+        return # nothing to do
 
     # establish DB connection
     # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
     conn = get_db_conn()
     cur = conn.cursor(row_factory=dict_row)
 
-    for curr_clusterid in cluster_device_IDs:
+    # iterate over device IDs for all points in this cluster
+    for p in idx:
+        curr_devid = cluster_complete_data[p]['device']
         timecutoff_epoch = time.time() - trace_persistence
         cur.execute(
             """
             SELECT longitude,latitude FROM criticalmaps_data WHERE deviceid=%s AND timestamp>=%s ORDER BY timestamp DESC;
             """,
-            (curr_clusterid,timecutoff_epoch)
+            (curr_devid,timecutoff_epoch)
         )
         res_rows = cur.fetchall()
         if len(res_rows)<=2:
-            print(f'deviceid={curr_clusterid}: insufficient data for trace plot')
+            print(f'deviceid={curr_devid}: insufficient data for trace plot')
             continue
 
         longitude = [_['longitude'] for _ in res_rows]
@@ -193,7 +189,7 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     spatial_filter: function used for spatial filtering. Takes single argument (JSON data point) and returns True if point is to be retained
     """
 
-    ### HERE WE COLLECT INFOS TO BE RETURNED TO CALLER ###
+    ### HERE WE COLLECT INFOS TO BE RETURNED TO CALLER (= the client via the API server) ###
     diag_info = []
     cluster_infos = []
     fn = {}

@@ -258,8 +258,7 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     fig,hax = plot_new()
     hax.set_title("Hierarchical Clustering Dendrogram")
     # plot the top three levels of the dendrogram
-    # plot_dendrogram(hax,model, truncate_mode="level", p=3)
-    plot_dendrogram(hax,model, truncate_mode="level", p=7)
+    plot_dendrogram(hax, model, truncate_mode="level", p=7, color_threshold=cfg['r_thres'])
     hax.set_xlabel("number of points in node (or index of point if no parenthesis)")
     hax.set_ylabel("distance [km]")
     hax.set_ylim(0.1, 3.5*cfg['rho']) # maximum length of great circle is pi*radius

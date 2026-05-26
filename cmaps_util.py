@@ -63,7 +63,9 @@ def load_cmap_jsonfile(datafile, *, spatial_filter=None, cb_diag_file_age=None):
     #hax.set_title('Points as loaded from JSON Data')
     #fn['scatter'] = plot_show_or_save(fig,'scatter')
 
-    X = np.vstack((np.array(longitude),np.array(latitude)))
+    # order of columns in matrix follows from what is needed for clustering using haversince_distances. 
+    # According to documentation of haversine_distances, "the first coordinate of each point is assumed to be the latitude, the second is the longitude, given in radians".
+    X = np.vstack((np.array(latitude),np.array(longitude)))
     X = np.transpose(X)
     # print(X)
 

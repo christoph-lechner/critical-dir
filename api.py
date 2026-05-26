@@ -52,8 +52,8 @@ def location_worker(user_pos, flag_iso=True):
     tstr = tnow.strftime('%Y%m%dT%H%M%S.%f')
     fprefix = f'img_{tstr}_'
 
-    # datafile=None --> use DB for current positions
-    r = main(datafile=None, observer_pos=user_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix, exclude_isolated_points=flag_iso)
+    # no datafile given --> use DB for current positions
+    r = main(observer_pos=user_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix, exclude_isolated_points=flag_iso)
     # r = main(datafile=freshest_datafile, observer_pos=user_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix, exclude_isolated_points=flag_iso)
 
     diag_info = '<h3>Diag Infos</h3>'
@@ -121,7 +121,7 @@ def update_location_demo():
     (input: does not require coordinates, uses hard-coded user-coordinates)
     """
     # fixed dummy position in Hamburg for dev/demo
-    user_pos = np.array([10, 53.5])
+    user_pos = np.array([53.5, 10.0])
     return location_worker(user_pos, flag_iso=payload.flag_iso)
 
 @app.post('/location', response_model=LocationResponse)
@@ -129,7 +129,7 @@ def update_location(payload: LocationRequest):
     """
     Implements location API endpoint
     """
-    user_pos = np.array([payload.longitude, payload.latitude])
+    user_pos = np.array([payload.latitude, payload.longitude])
     return location_worker(user_pos, flag_iso=payload.flag_iso)
 
 

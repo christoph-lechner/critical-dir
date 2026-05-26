@@ -30,18 +30,19 @@ from db_conn import get_db_conn
 @dataclass
 class ClusterInfo:
     cluster_ID: int
-    center: np.array
+    latitude: float
+    longitude: float
     N: int
     course: float
     dist: float
     def __str__(self):
-        return f"ID={self.cluster_ID}: N={self.N}, center={self.center}, course={self.course} deg, dist={self.dist}"
+        return f"ID={self.cluster_ID}: N={self.N}, center={self.latitude}, {self.longitude}, course={self.course} deg, dist={self.dist}"
     def table_header(self):
         # part of dervied dataclass to ensure that header and string representation of rows have matching layout
         return '<tr><td>(ID)</td><td>N</td><td>center</td><td>course [deg]</td><td>dist [km]</td></tr>'
     def as_html(self):
         # replace by jinja template?
-        return f"<tr><td>{self.cluster_ID}</td><td>{self.N}</td><td>{self.center[0]:.2f}, {self.center[1]:.2f}</td><td>{self.course:.2f}</td><td>{self.dist:.2f}</td></tr>"
+        return f"<tr><td>{self.cluster_ID}</td><td>{self.N}</td><td>{self.latitude:.2f}, {self.longitude:.2f}</td><td>{self.course:.2f}</td><td>{self.dist:.2f}</td></tr>"
 
 
 cfg = {
@@ -85,11 +86,11 @@ def plot_dendrogram(hax, model, **kwargs):
     # Using 'haversine' metric, distances are in radians
     # -> convert to km.
     my_dist = model.distances_
+    print(my_dist)
     my_dist *= cfg['rho']
     linkage_matrix = np.column_stack(
         [model.children_, my_dist, counts]
     ).astype(float)
-
     # print(linkage_matrix)
 
     # Plot the corresponding dendrogram
@@ -142,11 +143,11 @@ def cluster_plot(*, hax, cluster_data, cluster_labels, id_cluster: int, indicate
     if len(idx)==0:
         print(f'warning: no cluster to plot for id={id_cluster}')
     points = cluster_data[idx,:]
-    hax.plot(points[:,0], points[:,1], 'o', **kwargs)
+    hax.plot(points[:,1], points[:,0], 'o', **kwargs)
     if indicate_center:
         center = cluster_compute_center(cluster_data=cluster_data, cluster_labels=cluster_labels, id_cluster=id_cluster)
-        hax.plot(center[0], center[1], '+', **kwargs)
-        return center
+        hax.plot(center[1], center[0], '+', **kwargs)
+        return [center[0],center[1]]
 
 def cluster_plot_persistence(*, hax, cluster_complete_data, cluster_labels, id_cluster: int, trace_persistence=900, kwargs):
     """
@@ -183,7 +184,7 @@ def cluster_plot_persistence(*, hax, cluster_complete_data, cluster_labels, id_c
         hax.plot(longitude, latitude, '-', **kwargs)
         
 
-def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=None, fprefix=None, exclude_isolated_points=True):
+def main(*,datafile=None, observer_pos, spatial_filter=None, obj_path=None, fprefix=None, exclude_isolated_points=True):
     """
     obj_path: If provided, this switches on storing images to files instead of displaying them
     spatial_filter: function used for spatial filtering. Takes single argument (JSON data point) and returns True if point is to be retained
@@ -251,7 +252,7 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
         res_rows = cur.fetchall()
         longitude = [_['longitude'] for _ in res_rows]
         latitude  = [_['latitude']  for _ in res_rows]
-        X = np.vstack((np.array(longitude),np.array(latitude)))
+        X = np.vstack((np.array(latitude),np.array(longitude)))
         X = np.transpose(X)
         data = res_rows
         return data,X
@@ -279,6 +280,7 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     Xmetric = haversine_distances(Xrad)
     Xmetric = cfg['rho']*Xmetric
     # print(Xmetric)
+    # print(X)
 
     ### TODO: understand what the default linkage 'ward' does
 
@@ -319,7 +321,7 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
         fig,hax = plot_new()
         if only_local:
             plot_city(hax)
-        hax.plot(observer_pos[0], observer_pos[1], 'kx', label='your position')
+        hax.plot(observer_pos[1], observer_pos[0], 'kx', label='your position')
         for id_cluster in sorted_cluster_ids:
             # if requested by user, ignore single-element 'clusters'
             curr_cluster_nele = dict(counts_cluster_labels)[id_cluster]
@@ -330,10 +332,10 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
             curr_color = next(iter_colors)
             cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, kwargs={'color':curr_color, 'alpha':0.5})
             curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':curr_color})
-            initial_course,dist_rad = get_nav(observer_pos, curr_cluster_center)
+            initial_course,dist_rad = get_nav(observer_pos[::-1], curr_cluster_center[::-1]) # swap order of elements, hack until this function has a fixed interface
             #
             if store_ci:
-                curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, center=curr_cluster_center, course=initial_course, dist=cfg['rho']*dist_rad)
+                curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, latitude=curr_cluster_center[0], longitude=curr_cluster_center[1], course=initial_course, dist=cfg['rho']*dist_rad)
                 cluster_infos.append(curr_ci)
                 print(curr_ci)
             #
@@ -361,8 +363,8 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
 
 if __name__=='__main__':
     # fixed dummy position in Hamburg for dev purposes
-    my_pos = np.array([10, 53.5])
+    my_pos = np.array([53.5, 10.0])
 
     # r = main(datafile='data.json', observer_pos=my_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs'))
     # r = main(datafile='cmdata/data_20260526T220330_002729.json', observer_pos=my_pos, exclude_isolated_points=False)
-    r = main(datafile=None, observer_pos=my_pos, exclude_isolated_points=False)
+    r = main(observer_pos=my_pos, exclude_isolated_points=False)

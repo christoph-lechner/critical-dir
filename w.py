@@ -21,6 +21,7 @@ from dataclasses import dataclass
 import geopandas as gpd
 from nav import get_nav
 from my_util_files import get_list_of_files
+from cmaps_util import load_cmap_jsonfile
 
 @dataclass
 class ClusterInfo:
@@ -46,52 +47,6 @@ cfg = {
     ### constants ###
     'rho': 6371, # km, radius of Earth (in spherical approximation)
 }
-
-def normalize_coords(d):
-    """
-    The JSON contains the geolocation data as Int, scaled by 1E6.
-    Does not modify or remove any other fields.
-    """
-    def my_helper(d,key):
-        if key in d:
-            d[key] = d[key]/1.0e6
-    my_helper(d,'longitude')
-    my_helper(d,'latitude')
-    return d
-
-def load_cmap_jsonfile(datafile, *, diag_info=[], spatial_filter=None, warn_old=True):
-    # Check age of data file (note: using functions returning ints to avoid loss of precision caused by floats)
-    statinfo = os.stat(datafile)
-    # print(statinfo.st_mtime)
-    age_datafile = time.time_ns()/1000000000 - statinfo.st_mtime
-    if age_datafile>cfg['warn_file_age']:
-        diag_info.append(f'WARNING: file is {age_datafile} seconds old')
-        print(f'WARNING: file is {age_datafile} seconds old')
-
-    with open(datafile,'r') as fin:
-        data_all = json.load(fin)
-
-    data = []
-    for d in data_all:
-        d = normalize_coords(d)
-        if spatial_filter and callable(spatial_filter) and spatial_filter(d)==False:
-            continue
-        data.append(d)
-
-    longitude = [_['longitude'] for _ in data]
-    latitude  = [_['latitude']  for _ in data]
-
-    #fig,hax = plot_new()
-    #hax.plot(longitude, latitude, 'o')
-    #hax.set_title('Points as loaded from JSON Data')
-    #fn['scatter'] = plot_show_or_save(fig,'scatter')
-
-    X = np.vstack((np.array(longitude),np.array(latitude)))
-    X = np.transpose(X)
-    # print(X)
-
-    return data,X
-
 
 def spatial_filter_HH(d):
     """
@@ -218,7 +173,12 @@ def cluster_plot_persistence(*, hax, cluster_complete_data, cluster_labels, id_c
     cntr=0
     for curr_f in lof:
         print(f'**** Loading file {curr_f.fn}')
-        data,_ = load_cmap_jsonfile(datadir/curr_f.fn, warn_old=False)
+        def cb_age(age):
+            if age>cfg['warn_file_age']:
+                diag_info.append(f'WARNING: file is {age} seconds old')
+                print(f'WARNING: file is {age} seconds old')
+
+        data,_ = load_cmap_jsonfile(datadir/curr_f.fn, cb_diag_file_age=cb_age)
         for curr_dp in data:
             for curr_clusterid in cluster_device_IDs:
                 if curr_dp['device'] == curr_clusterid:
@@ -270,7 +230,12 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
         # returning the relative path since the webclient sees a different path layout than the server
         return rel_path
 
-    data,X = load_cmap_jsonfile(datafile, diag_info=diag_info, spatial_filter=spatial_filter)
+    def cb_age(age):
+        if age>cfg['warn_file_age']:
+            diag_info.append(f'WARNING: file is {age} seconds old')
+            print(f'WARNING: file is {age} seconds old')
+
+    data,X = load_cmap_jsonfile(datafile, spatial_filter=spatial_filter, cb_diag_file_age=cb_age)
 
     """
     Cluster and plot dendrogram
@@ -373,4 +338,5 @@ if __name__=='__main__':
     my_pos = np.array([10, 53.5])
 
     # r = main(datafile='data.json', observer_pos=my_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs'))
-    r = main(datafile='cmdata/data_20260525T153000_002850.json', observer_pos=my_pos)
+    # r = main(datafile='cmdata/data_20260525T153000_002850.json', observer_pos=my_pos)
+    r = main(datafile='data.json', observer_pos=my_pos)

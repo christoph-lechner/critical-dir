@@ -8,8 +8,6 @@ from dataclasses import dataclass
 import datetime
 from pathlib import Path
 
-datadir = Path('/home/cl/work/criticalmaps--richtungspfeil/cmdata')
-
 @dataclass
 class FileInfo:
     is_valid_filename: bool = False
@@ -56,6 +54,7 @@ def identify_most_recent_file(datadir, *, n=1):
     return lof[0]
 
 def main():
+    datadir = Path('/home/cl/work/criticalmaps--richtungspfeil/cmdata')
     print(identify_most_recent_file(datadir, n=2))
 
 if __name__=='__main__':

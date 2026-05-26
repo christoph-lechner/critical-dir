@@ -7,7 +7,7 @@ import threading
 import argparse
 from threading import Event
 from pathlib import Path
-from cmaps_data_core import get_cmaps_data
+from cmaps_api import get_cmaps_data
 
 
 cfg = {
@@ -91,7 +91,7 @@ def t_download_worker(*,stop_event):
             if status['healthcheck']:
                 status['healthcheck'].heartbeat()
         except:
-            # design idea: Networking issues with data request are ok, file I/O issues should be re-raised to stop the program
+            # design idea to be implemented: Networking issues with data request are ok, file I/O issues should be re-raised to stop the program
             raise
 
 

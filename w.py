@@ -332,7 +332,7 @@ def main(*,datafile=None, observer_pos, spatial_filter=None, obj_path=None, fpre
             curr_color = next(iter_colors)
             cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, kwargs={'color':curr_color, 'alpha':0.5})
             curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':curr_color})
-            initial_course,dist_rad = get_nav(observer_pos[::-1], curr_cluster_center[::-1]) # swap order of elements, hack until this function has a fixed interface
+            initial_course,dist_rad = get_nav(observer_pos, curr_cluster_center)
             #
             if store_ci:
                 curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, latitude=curr_cluster_center[0], longitude=curr_cluster_center[1], course=initial_course, dist=cfg['rho']*dist_rad)

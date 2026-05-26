@@ -43,16 +43,18 @@ async def req_catch_all(request: Request):
 
 
 def location_worker(user_pos, flag_iso=True):
-    datadir = Path('/home/cl/work/criticalmaps--richtungspfeil/cmdata')
-    freshest_datafile_info = identify_most_recent_file(datadir)
-    freshest_datafile = datadir / freshest_datafile_info.fn
+    # datadir = Path('/home/cl/work/criticalmaps--richtungspfeil/cmdata')
+    # freshest_datafile_info = identify_most_recent_file(datadir)
+    # freshest_datafile = datadir / freshest_datafile_info.fn
 
     # generate "unique" prefix for image files
     tnow = datetime.datetime.now()
     tstr = tnow.strftime('%Y%m%dT%H%M%S.%f')
     fprefix = f'img_{tstr}_'
 
-    r = main(datafile=freshest_datafile, observer_pos=user_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix, exclude_isolated_points=flag_iso)
+    # datafile=None --> use DB for current positions
+    r = main(datafile=None, observer_pos=user_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix, exclude_isolated_points=flag_iso)
+    # r = main(datafile=freshest_datafile, observer_pos=user_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix, exclude_isolated_points=flag_iso)
 
     diag_info = '<h3>Diag Infos</h3>'
     diag_info += f'Server time: {tstr}<br>'

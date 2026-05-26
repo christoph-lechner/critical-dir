@@ -222,7 +222,45 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
             diag_info.append(f'WARNING: file is {age} seconds old')
             print(f'WARNING: file is {age} seconds old')
 
-    data,X = load_cmap_jsonfile(datafile, spatial_filter=spatial_filter, cb_diag_file_age=cb_age)
+
+    def load_from_DB():
+        """
+        First implementation to retrieve most recent coordinates seen for every device.
+        Uses temporal cut-off. If cut-off time is different from that used by API server (sending JSON data files), the data points in the dataset will be different as well -- for instance if a mobile device starts/ceases sending data.
+        Currently emulates data structure returned by JSON loading function.
+        """
+        # establish DB connection
+        # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
+        conn = get_db_conn()
+        cur = conn.cursor(row_factory=dict_row)
+
+        cur.execute(
+            """
+            WITH qq AS (
+                WITH q_ts_mostrecent AS (
+                    SELECT MAX(timestamp) AS timestamp_mostrecent FROM criticalmaps_data
+                )
+                SELECT
+                    c.deviceid,c.longitude,c.latitude,c.timestamp, ROW_NUMBER() OVER (PARTITION BY c.deviceid ORDER BY c.timestamp DESC) AS rn
+                FROM criticalmaps_data AS c, q_ts_mostrecent
+                WHERE timestamp>=q_ts_mostrecent.timestamp_mostrecent-150
+            )
+            SELECT deviceid AS device, longitude, latitude, timestamp FROM qq WHERE rn=1;
+            """
+        )
+        res_rows = cur.fetchall()
+        longitude = [_['longitude'] for _ in res_rows]
+        latitude  = [_['latitude']  for _ in res_rows]
+        X = np.vstack((np.array(longitude),np.array(latitude)))
+        X = np.transpose(X)
+        data = res_rows
+        return data,X
+    
+    if datafile:
+        data,X = load_cmap_jsonfile(datafile, spatial_filter=spatial_filter, cb_diag_file_age=cb_age)
+    else:
+        print('loading current positions from DB')
+        data,X = load_from_DB()
 
     """
     Cluster and plot dendrogram
@@ -326,4 +364,5 @@ if __name__=='__main__':
     my_pos = np.array([10, 53.5])
 
     # r = main(datafile='data.json', observer_pos=my_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs'))
-    r = main(datafile='cmdata/data_20260526T154830_002682.json', observer_pos=my_pos, exclude_isolated_points=False)
+    # r = main(datafile='cmdata/data_20260526T220330_002729.json', observer_pos=my_pos, exclude_isolated_points=False)
+    r = main(datafile=None, observer_pos=my_pos, exclude_isolated_points=False)

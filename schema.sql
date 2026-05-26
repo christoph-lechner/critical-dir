@@ -7,3 +7,5 @@ CREATE TABLE criticalmaps_data(
     ts_entry_creation TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE (_h)
 );
+
+CREATE INDEX ON criticalmaps_data(deviceid,timestamp);

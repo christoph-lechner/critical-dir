@@ -47,8 +47,9 @@ class ClusterInfo:
 
 cfg = {
     'warn_file_age': 120, # seconds
-    'r_thres': 1, # km, radius used for clustering (note: converted to great-circle angle using radius of Earth)
-    'max_clusters': 10002,
+    'r_thres': 2, # km, radius used for clustering (note: converted to great-circle angle using radius of Earth)
+
+    'max_clusters': 1000,
     ### constants ###
     'rho': 6371, # km, radius of Earth (in spherical approximation)
 }
@@ -196,7 +197,7 @@ def cluster_plot_persistence(*, hax, cluster_complete_data, cluster_labels, id_c
         plot_device_trace(cur=cur, hax=hax, deviceid=curr_devid, timestamp_min=timecutoff_epoch, kwargs=kwargs)
         
 
-def main(*,datafile=None, observer_pos, spatial_filter=None, obj_path=None, fprefix=None, exclude_isolated_points=True):
+def main(*,datafile=None, observer_pos, spatial_filter=None, obj_path=None, fprefix=None, exclude_isolated_points=True, cluster_dist_thres=None, cluster_trace_persistence=900):
     """
     obj_path: If provided, this switches on storing images to files instead of displaying them
     spatial_filter: function used for spatial filtering. Takes single argument (JSON data point) and returns True if point is to be retained
@@ -206,6 +207,10 @@ def main(*,datafile=None, observer_pos, spatial_filter=None, obj_path=None, fpre
     diag_info = []
     cluster_infos = []
     fn = {}
+
+    # caller can override value of distance threshold for clustering process
+    if cluster_dist_thres:
+        cfg['r_thres'] = cluster_dist_thres
 
     # fprefix should be unique to this session
     if fprefix is None:
@@ -342,7 +347,7 @@ def main(*,datafile=None, observer_pos, spatial_filter=None, obj_path=None, fpre
             #
             # for correct z stacking: plot persistence traces first (would be better to plot *all* persistence traces first, then all current positions)
             curr_color = next(iter_colors)
-            cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, kwargs={'color':curr_color, 'alpha':0.5})
+            cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, trace_persistence=cluster_trace_persistence, kwargs={'color':curr_color, 'alpha':0.5})
             curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':curr_color})
             initial_course,dist_rad = get_nav(observer_pos, curr_cluster_center)
             #

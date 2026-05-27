@@ -121,7 +121,7 @@ def update_location_demo():
     (input: does not require coordinates, uses hard-coded user-coordinates)
     """
     # fixed dummy position in Hamburg for dev/demo
-    user_pos = np.array([53.5, 10.0])
+    user_pos = np.array([53.55, 10.0])
     return location_worker(user_pos, flag_iso=payload.flag_iso)
 
 @app.post('/location', response_model=LocationResponse)

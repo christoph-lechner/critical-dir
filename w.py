@@ -47,7 +47,7 @@ class ClusterInfo:
 
 cfg = {
     'warn_file_age': 120, # seconds
-    'r_thres': 100, # km, radius used for clustering (note: converted to great-circle angle using radius of Earth)
+    'r_thres': 1, # km, radius used for clustering (note: converted to great-circle angle using radius of Earth)
     'max_clusters': 10002,
     ### constants ###
     'rho': 6371, # km, radius of Earth (in spherical approximation)
@@ -375,7 +375,7 @@ def main(*,datafile=None, observer_pos, spatial_filter=None, obj_path=None, fpre
 
 if __name__=='__main__':
     # fixed dummy position in Hamburg for dev purposes
-    my_pos = np.array([53.5, 10.0])
+    my_pos = np.array([53.55, 10.0])
 
     # r = main(datafile='data.json', observer_pos=my_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs'))
     # r = main(datafile='cmdata/data_20260526T220330_002729.json', observer_pos=my_pos, exclude_isolated_points=False)

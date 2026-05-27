@@ -31,7 +31,7 @@ def test_nav():
     """
     Just a simple test: verifies that the function can run and doesn't raise exceptions
     """
-    my_pos = [53.5,10.0] # Hamburg, Germany
+    my_pos = [10, 53.55] # Hamburg, Germany
     get_initial_course(my_pos, np.add(my_pos,[0, 0.1]))
 
 def test_nav_dirs(capsys):
@@ -44,7 +44,7 @@ def test_nav_dirs(capsys):
     # going South
     assert angle_comp(get_initial_course([0,0], [-10,0]), 180.0)
 
-    my_pos = [10, 53.5] # Hamburg, Germany
+    my_pos = [10, 53.55] # Hamburg, Germany
 
     assert angle_comp(get_initial_course(my_pos, np.add(my_pos,[ 0.01,0])), 0.0)
     assert angle_comp(get_initial_course(my_pos, np.add(my_pos,[-0.01,0])), 180.0)

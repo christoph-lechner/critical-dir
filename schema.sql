@@ -1,3 +1,4 @@
+-- NOTE: if you change the definition of this table, be sure to update the data ingestion script
 CREATE TABLE criticalmaps_data(
     _h TEXT,
     deviceid TEXT,

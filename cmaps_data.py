@@ -174,34 +174,44 @@ def t_download_worker(*,stop_event):
             with open(fn_out,'w') as fout:
                 fout.write(data)
 
-            # heartbeat
+            # Heartbeat signaling everything is OK. The data was written stored in a file, so even if the following DB ingestion fails, we have the data.
             if status['healthcheck']:
                 status['healthcheck'].heartbeat()
-        except:
-            # design idea to be implemented: Networking issues with data request are ok, file I/O issues should be re-raised to stop the program
-            raise
+        except Exception as e:
+            # Design idea to be implemented: Networking issues while getting the data are ok (this would also include any "bad" HTTP status codes such as 500),
+            # consider to re-raise file I/O issues to stop the program (but then a watchdog has to start another instance so that data acquisition goes on)
+            print('*** Data download resulted in exception ***')
+            print(traceback.format_exc())
+            continue
 
-        # create unique names for data staging steps
-        t0 = datetime.datetime.now()
-        str_t0 = t0.strftime('%Y%m%dT%H%M%S')
-        stg_table = 'stg_'+str_t0
-        stg_table_hashed = stg_table + '_h'
-        stg_table_dedupl = stg_table + '_d'
+        # DB operations are in second try/catch block to make the program more robust (for instance of a single operation fails for whatever reason)
+        # TODO: add provisions for DB connection going down.
+        try:
+            # create unique names for data staging steps
+            t0 = datetime.datetime.now()
+            str_t0 = t0.strftime('%Y%m%dT%H%M%S')
+            stg_table = 'stg_'+str_t0
+            stg_table_hashed = stg_table + '_h'
+            stg_table_dedupl = stg_table + '_d'
 
-        # prepare staging table
-        data,_ = load_cmap_jsonfile(fn_out)
-        prepare_stg_table(cur, stg_table)
-        for d in data:
-            cur.execute(
-                'INSERT INTO ' +stg_table+ ' (deviceid,longitude,latitude,timestamp) VALUES (%s,%s,%s,%s)',
-                (d['device'],d['longitude'],d['latitude'],d['timestamp'])
-            )
+            # prepare staging table
+            data,_ = load_cmap_jsonfile(fn_out)
+            prepare_stg_table(cur, stg_table)
+            for d in data:
+                cur.execute(
+                    'INSERT INTO ' +stg_table+ ' (deviceid,longitude,latitude,timestamp) VALUES (%s,%s,%s,%s)',
+                    (d['device'],d['longitude'],d['latitude'],d['timestamp'])
+                )
 
-        data_add_hashes(cur, stg_table_hashed, stg_table)
-        data_dedupl(cur, stg_table_dedupl, stg_table_hashed)
-        data_merge(cur, data_table='criticalmaps_data', stg_table=stg_table_dedupl)
+            data_add_hashes(cur, stg_table_hashed, stg_table)
+            data_dedupl(cur, stg_table_dedupl, stg_table_hashed)
+            data_merge(cur, data_table='criticalmaps_data', stg_table=stg_table_dedupl)
 
-        conn.commit()
+            conn.commit()
+        except Exception as e:
+            print('*** DB operations resulted in exception ***')
+            print(traceback.format_exc())
+            continue
 
 
 def main():

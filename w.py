@@ -149,6 +149,31 @@ def cluster_plot(*, hax, cluster_data, cluster_labels, id_cluster: int, indicate
         hax.plot(center[1], center[0], '+', **kwargs)
         return [center[0],center[1]]
 
+def plot_device_trace(*, cur, hax, deviceid, timestamp_min, timestamp_max=None, kwargs={}):
+    """
+    timestamp_min: only consider points after this Unix epoch value
+    timestamp_max: planned feature: to be able to specify a time range to be considered for plotting
+    kwargs: additional args to be passed to 'plot' function call
+    """
+    if timestamp_max:
+        raise ValueError('--- not implemented yet ---')
+
+    cur.execute(
+        """
+        SELECT longitude,latitude FROM criticalmaps_data WHERE deviceid=%s AND timestamp>=%s ORDER BY timestamp DESC;
+        """,
+        (deviceid,timestamp_min)
+    )
+    res_rows = cur.fetchall()
+    if len(res_rows)<1:
+        print(f'Warning: deviceid={curr_devid}: insufficient data for trace plot')
+        return len(res_rows)
+
+    longitude = [_['longitude'] for _ in res_rows]
+    latitude  = [_['latitude']  for _ in res_rows]
+    hax.plot(longitude, latitude, '-', **kwargs)
+    return len(res_rows)
+
 def cluster_plot_persistence(*, hax, cluster_complete_data, cluster_labels, id_cluster: int, trace_persistence=900, kwargs):
     """
     cluster_complete_data: expects list of dicts, as loaded from single JSON file
@@ -168,20 +193,7 @@ def cluster_plot_persistence(*, hax, cluster_complete_data, cluster_labels, id_c
     for p in idx:
         curr_devid = cluster_complete_data[p]['device']
         timecutoff_epoch = time.time() - trace_persistence
-        cur.execute(
-            """
-            SELECT longitude,latitude FROM criticalmaps_data WHERE deviceid=%s AND timestamp>=%s ORDER BY timestamp DESC;
-            """,
-            (curr_devid,timecutoff_epoch)
-        )
-        res_rows = cur.fetchall()
-        if len(res_rows)<=2:
-            print(f'deviceid={curr_devid}: insufficient data for trace plot')
-            continue
-
-        longitude = [_['longitude'] for _ in res_rows]
-        latitude  = [_['latitude']  for _ in res_rows]
-        hax.plot(longitude, latitude, '-', **kwargs)
+        plot_device_trace(cur=cur, hax=hax, deviceid=curr_devid, timestamp_min=timecutoff_epoch, kwargs=kwargs)
         
 
 def main(*,datafile=None, observer_pos, spatial_filter=None, obj_path=None, fprefix=None, exclude_isolated_points=True):

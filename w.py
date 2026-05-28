@@ -347,7 +347,9 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
             #
             # for correct z stacking: plot persistence traces first (would be better to plot *all* persistence traces first, then all current positions)
             curr_color = next(iter_colors)
-            cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, trace_persistence=cluster_trace_persistence, kwargs={'color':curr_color, 'alpha':0.5})
+            if f_dataloader==load_from_DB:
+                # trace persistence currently only for data coming from SQL DB
+                cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, trace_persistence=cluster_trace_persistence, kwargs={'color':curr_color, 'alpha':0.5})
             curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':curr_color})
             initial_course,dist_rad = get_nav(observer_pos, curr_cluster_center)
             #

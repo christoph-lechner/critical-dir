@@ -19,34 +19,103 @@ from collections import Counter
 from pathlib import Path
 from dataclasses import dataclass
 import geopandas as gpd
+from functools import partial
 from nav import get_nav
 from my_util_files import get_list_of_files
 from cmaps_util import load_cmap_jsonfile
+import psycopg
+from psycopg.rows import dict_row
+from db_conn import get_db_conn
+
 
 @dataclass
 class ClusterInfo:
     cluster_ID: int
-    center: np.array
+    latitude: float
+    longitude: float
     N: int
     course: float
     dist: float
     def __str__(self):
-        return f"ID={self.cluster_ID}: N={self.N}, center={self.center}, course={self.course} deg, dist={self.dist}"
+        return f"ID={self.cluster_ID}: N={self.N}, center={self.latitude}, {self.longitude}, course={self.course} deg, dist={self.dist}"
     def table_header(self):
         # part of dervied dataclass to ensure that header and string representation of rows have matching layout
         return '<tr><td>(ID)</td><td>N</td><td>center</td><td>course [deg]</td><td>dist [km]</td></tr>'
     def as_html(self):
         # replace by jinja template?
-        return f"<tr><td>{self.cluster_ID}</td><td>{self.N}</td><td>{self.center[0]:.2f}, {self.center[1]:.2f}</td><td>{self.course:.2f}</td><td>{self.dist:.2f}</td></tr>"
+        return f"<tr><td>{self.cluster_ID}</td><td>{self.N}</td><td>{self.latitude:.2f}, {self.longitude:.2f}</td><td>{self.course:.2f}</td><td>{self.dist:.2f}</td></tr>"
 
 
 cfg = {
     'warn_file_age': 120, # seconds
-    'r_thres': 100, # km, radius used for clustering (note: converted to great-circle angle using radius of Earth)
-    'max_clusters': 10002,
+    'r_thres': 2, # km, radius used for clustering (note: converted to great-circle angle using radius of Earth)
+
+    'max_clusters': 1000,
     ### constants ###
     'rho': 6371, # km, radius of Earth (in spherical approximation)
 }
+
+
+
+def load_from_DB():
+    """
+    First implementation to retrieve most recent coordinates seen for every device.
+    Uses temporal cut-off. If cut-off time is different from that used by API server (sending JSON data files), the data points in the dataset will be different as well -- for instance if a mobile device starts/ceases sending data.
+    Currently emulates data structure returned by JSON loading function.
+    """
+    # print('loading current positions from DB')
+    # establish DB connection
+    # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
+    conn = get_db_conn()
+    cur = conn.cursor(row_factory=dict_row)
+
+    cur.execute(
+        """
+        WITH qq AS (
+            WITH q_ts_mostrecent AS (
+                SELECT MAX(timestamp) AS timestamp_mostrecent FROM criticalmaps_data
+            )
+            SELECT
+                c.deviceid,c.longitude,c.latitude,c.timestamp, ROW_NUMBER() OVER (PARTITION BY c.deviceid ORDER BY c.timestamp DESC) AS rn
+            FROM criticalmaps_data AS c, q_ts_mostrecent
+            WHERE timestamp>=q_ts_mostrecent.timestamp_mostrecent-150
+        )
+        SELECT deviceid AS device, longitude, latitude, timestamp FROM qq WHERE rn=1;
+        """
+    )
+    res_rows = cur.fetchall()
+    longitude = [_['longitude'] for _ in res_rows]
+    latitude  = [_['latitude']  for _ in res_rows]
+    X = np.vstack((np.array(latitude),np.array(longitude)))
+    X = np.transpose(X)
+
+    # Structure returned from DB has same structure as data loaded from JSON files (containing text obtained from CriticalMaps API interface):
+    # A list of dictionaries with the structure: {"device": "...", "latitude": float, "longitude": float, "timestamp": unix_epoch_value}
+    # The only difference is that the latitude/longitude values have been scaled to usual (float) values, while the API returns int values (scaled up by a factor of 1E6)
+    data = res_rows
+    return data,X
+
+def load_clustertestdata():
+    def make_datapoint(lat,long):
+        return {'device':'1234', 'latitude':lat, 'longitude':long, 'timestamp':1}
+
+    print('*** INFO: generating test data set. Still have to implement unique "device IDs" ***')
+
+    # Test data points on the equator (1 deg corresponds to: 2*pi*6371km/360 deg = 111.2 km/deg)
+    data = [make_datapoint(0,0), make_datapoint(0,0.1), make_datapoint(0,0.3), make_datapoint(0,1), make_datapoint(0,2),
+            #
+            make_datapoint(0,5),
+            make_datapoint(0,5.005), # with rcluster=2km this one will be part of a cluster
+            make_datapoint(0,4.98),  # with rcluster=2km this one will not be part of a cluster
+    ]
+    longitude = [_['longitude'] for _ in data]
+    latitude  = [_['latitude']  for _ in data]
+    X = np.vstack((np.array(latitude),np.array(longitude)))
+    X = np.transpose(X)
+
+    # Structure returned from DB has same structure as data loaded from JSON files (containing text obtained from CriticalMaps API interface):
+    # A list of dictionaries with the structure: {"device": "...", "latitude": float, "longitude": float, "timestamp": unix_epoch_value}
+    return data,X
 
 def spatial_filter_HH(d):
     """
@@ -81,11 +150,11 @@ def plot_dendrogram(hax, model, **kwargs):
     # Using 'haversine' metric, distances are in radians
     # -> convert to km.
     my_dist = model.distances_
+    print(my_dist)
     my_dist *= cfg['rho']
     linkage_matrix = np.column_stack(
         [model.children_, my_dist, counts]
     ).astype(float)
-
     # print(linkage_matrix)
 
     # Plot the corresponding dendrogram
@@ -138,74 +207,73 @@ def cluster_plot(*, hax, cluster_data, cluster_labels, id_cluster: int, indicate
     if len(idx)==0:
         print(f'warning: no cluster to plot for id={id_cluster}')
     points = cluster_data[idx,:]
-    hax.plot(points[:,0], points[:,1], 'o', **kwargs)
+    hax.plot(points[:,1], points[:,0], 'o', **kwargs)
     if indicate_center:
         center = cluster_compute_center(cluster_data=cluster_data, cluster_labels=cluster_labels, id_cluster=id_cluster)
-        hax.plot(center[0], center[1], '+', **kwargs)
-        return center
+        hax.plot(center[1], center[0], '+', **kwargs)
+        return [center[0],center[1]]
 
-def cluster_plot_persistence(*, hax, cluster_complete_data, cluster_labels, id_cluster: int, kwargs):
+def plot_device_trace(*, cur, hax, deviceid, timestamp_min, timestamp_max=None, kwargs={}):
+    """
+    timestamp_min: only consider points after this Unix epoch value
+    timestamp_max: planned feature: to be able to specify a time range to be considered for plotting
+    kwargs: additional args to be passed to 'plot' function call
+    """
+    if timestamp_max:
+        raise ValueError('--- not implemented yet ---')
+
+    cur.execute(
+        """
+        SELECT longitude,latitude FROM criticalmaps_data WHERE deviceid=%s AND timestamp>=%s ORDER BY timestamp DESC;
+        """,
+        (deviceid,timestamp_min)
+    )
+    res_rows = cur.fetchall()
+    if len(res_rows)<1:
+        print(f'Warning: deviceid={curr_devid}: insufficient data for trace plot')
+        return len(res_rows)
+
+    longitude = [_['longitude'] for _ in res_rows]
+    latitude  = [_['latitude']  for _ in res_rows]
+    hax.plot(longitude, latitude, '-', **kwargs)
+    return len(res_rows)
+
+def cluster_plot_persistence(*, hax, cluster_complete_data, cluster_labels, id_cluster: int, trace_persistence=900, kwargs):
     """
     cluster_complete_data: expects list of dicts, as loaded from single JSON file
+    trace_persistence: persistence of trace, in seconds
     """
     idx = [_ for _,x in enumerate(cluster_labels) if x==id_cluster]
     if len(idx)==0:
         print(f'warning: no cluster to plot for id={id_cluster}')
+        return # nothing to do
 
-    # collect device IDs for all points in this cluster
-    traces = {}
-    cluster_device_IDs=[]
+    # establish DB connection
+    # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
+    conn = get_db_conn()
+    cur = conn.cursor(row_factory=dict_row)
+
+    # iterate over device IDs for all points in this cluster
     for p in idx:
-        cluster_device_IDs.append(cluster_complete_data[p]['device'])
-        traces[cluster_complete_data[p]['device']] = []
+        curr_devid = cluster_complete_data[p]['device']
+        timecutoff_epoch = time.time() - trace_persistence
+        plot_device_trace(cur=cur, hax=hax, deviceid=curr_devid, timestamp_min=timecutoff_epoch, kwargs=kwargs)
+        
 
-
-    # collect files to process
-    import datetime
-    datadir = Path('/home/cl/work/criticalmaps--richtungspfeil/cmdata')
-    lof_unsorted = get_list_of_files(datadir)
-    lof_sorted = sorted(lof_unsorted, key=lambda _: _.ts, reverse=True)
-    t2 = datetime.datetime(2026, 5, 25, 15, 30)
-    t1 = t2 + datetime.timedelta(minutes=-60)
-    filter_func = lambda _: t1<=_.ts and _.ts<=t2
-    lof = list( filter(filter_func, lof_sorted) )
-
-    cntr=0
-    for curr_f in lof:
-        print(f'**** Loading file {curr_f.fn}')
-        def cb_age(age):
-            if age>cfg['warn_file_age']:
-                diag_info.append(f'WARNING: file is {age} seconds old')
-                print(f'WARNING: file is {age} seconds old')
-
-        data,_ = load_cmap_jsonfile(datadir/curr_f.fn, cb_diag_file_age=cb_age)
-        for curr_dp in data:
-            for curr_clusterid in cluster_device_IDs:
-                if curr_dp['device'] == curr_clusterid:
-                    traces[curr_clusterid].append(curr_dp)
-
-    for curr_deviceid,curr_tracedata in traces.items():
-        print(curr_deviceid)
-        if len(curr_tracedata)<=2:
-            print(f'device={curr_deviceid} insufficient data for trace plot')
-        longitude = [_['longitude'] for _ in curr_tracedata]
-        latitude  = [_['latitude']  for _ in curr_tracedata]
-        timestamps= [_['timestamp'] for _ in curr_tracedata]
-        hax.plot(longitude, latitude, 'k')
-        print(list(set(timestamps)))
-    
-
-
-def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=None, fprefix=None, exclude_isolated_points=True):
+def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None, exclude_isolated_points=True, cluster_dist_thres=None, cluster_trace_persistence=900):
     """
+    f_dataloader: Function that is called (without any arguments) to load the data to be processed, expected to return two objects: data,X. 'data' is the data formatted as in the JSON file, X is the matrix containing geodata for clustering process.
     obj_path: If provided, this switches on storing images to files instead of displaying them
-    spatial_filter: function used for spatial filtering. Takes single argument (JSON data point) and returns True if point is to be retained
     """
 
-    ### HERE WE COLLECT INFOS TO BE RETURNED TO CALLER ###
+    ### HERE WE COLLECT INFOS TO BE RETURNED TO CALLER (= the client via the API server) ###
     diag_info = []
     cluster_infos = []
     fn = {}
+
+    # caller can override value of distance threshold for clustering process
+    if cluster_dist_thres:
+        cfg['r_thres'] = cluster_dist_thres
 
     # fprefix should be unique to this session
     if fprefix is None:
@@ -230,12 +298,9 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
         # returning the relative path since the webclient sees a different path layout than the server
         return rel_path
 
-    def cb_age(age):
-        if age>cfg['warn_file_age']:
-            diag_info.append(f'WARNING: file is {age} seconds old')
-            print(f'WARNING: file is {age} seconds old')
-
-    data,X = load_cmap_jsonfile(datafile, spatial_filter=spatial_filter, cb_diag_file_age=cb_age)
+    if not (f_dataloader and callable(f_dataloader)):
+        raise ValueError('expecting function')
+    data,X = f_dataloader()
 
     """
     Cluster and plot dendrogram
@@ -254,6 +319,7 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     Xmetric = haversine_distances(Xrad)
     Xmetric = cfg['rho']*Xmetric
     # print(Xmetric)
+    # print(X)
 
     ### TODO: understand what the default linkage 'ward' does
 
@@ -267,8 +333,7 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
     fig,hax = plot_new()
     hax.set_title("Hierarchical Clustering Dendrogram")
     # plot the top three levels of the dendrogram
-    # plot_dendrogram(hax,model, truncate_mode="level", p=3)
-    plot_dendrogram(hax,model, truncate_mode="level", p=7)
+    plot_dendrogram(hax, model, truncate_mode="level", p=7, color_threshold=cfg['r_thres'])
     hax.set_xlabel("number of points in node (or index of point if no parenthesis)")
     hax.set_ylabel("distance [km]")
     hax.set_ylim(0.1, 3.5*cfg['rho']) # maximum length of great circle is pi*radius
@@ -295,19 +360,23 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
         fig,hax = plot_new()
         if only_local:
             plot_city(hax)
-        hax.plot(observer_pos[0], observer_pos[1], 'kx', label='your position')
+        hax.plot(observer_pos[1], observer_pos[0], 'kx', label='your position')
         for id_cluster in sorted_cluster_ids:
             # if requested by user, ignore single-element 'clusters'
             curr_cluster_nele = dict(counts_cluster_labels)[id_cluster]
             if exclude_isolated_points and curr_cluster_nele<=1:
                 continue
             #
-            curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':next(iter_colors)})
-            cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, kwargs={})
+            # for correct z stacking: plot persistence traces first (would be better to plot *all* persistence traces first, then all current positions)
+            curr_color = next(iter_colors)
+            if f_dataloader==load_from_DB:
+                # trace persistence currently only for data coming from SQL DB
+                cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, trace_persistence=cluster_trace_persistence, kwargs={'color':curr_color, 'alpha':0.5})
+            curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':curr_color})
             initial_course,dist_rad = get_nav(observer_pos, curr_cluster_center)
             #
             if store_ci:
-                curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, center=curr_cluster_center, course=initial_course, dist=cfg['rho']*dist_rad)
+                curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, latitude=curr_cluster_center[0], longitude=curr_cluster_center[1], course=initial_course, dist=cfg['rho']*dist_rad)
                 cluster_infos.append(curr_ci)
                 print(curr_ci)
             #
@@ -335,8 +404,27 @@ def main(*,datafile='data.json', observer_pos, spatial_filter=None, obj_path=Non
 
 if __name__=='__main__':
     # fixed dummy position in Hamburg for dev purposes
-    my_pos = np.array([10, 53.5])
+    my_pos = np.array([53.55, 10.0])
 
-    # r = main(datafile='data.json', observer_pos=my_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs'))
-    # r = main(datafile='cmdata/data_20260525T153000_002850.json', observer_pos=my_pos)
-    r = main(datafile='data.json', observer_pos=my_pos)
+    def cb_age(age):
+        if age>cfg['warn_file_age']:
+            # diag_info.append(f'WARNING: file is {age} seconds old') # FIXME
+            print(f'WARNING: file is {age} seconds old')
+
+    def dataloader_file(datafile, spatial_filter=None):
+        """
+        datafile: name of file to be loaded (NOTE: functools.partial can be used to obtain a function with frozen argument values to be passed to the data processing function)
+        spatial_filter: function used for spatial filtering. Takes single argument (JSON data point) and returns True if point is to be retained
+        """
+        print(f'loading data from file {datafile}')
+        data,X = load_cmap_jsonfile(datafile, spatial_filter=spatial_filter, cb_diag_file_age=cb_age)
+        return data,X
+
+    # hard-coded test data for clustering algorithm
+    # r = main(f_dataloader=load_clustertestdata, observer_pos=my_pos, exclude_isolated_points=False)
+
+    # load data from JSON file
+    # r = main(f_dataloader=partial(dataloader_file, datafile='cmdata/data_20260528T100900_002729.json'), observer_pos=my_pos, exclude_isolated_points=False)
+
+    # default loader is DB loader
+    r = main(observer_pos=my_pos, exclude_isolated_points=False)

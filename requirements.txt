@@ -6,3 +6,4 @@ scikit-learn
 uvicorn
 fastapi
 requests
+psycopg[binary,pool]

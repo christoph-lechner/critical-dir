@@ -403,13 +403,13 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
             hax.set_ylim(53.35, 53.75)
         fig.legend()
         #
-        # plot finalization #2
-        hax_p.set_title('Result of Clustering Analysis')
+        # plot finalization #2 (polar plot)
+        hax_p.set_title(f'Result of Clustering Analysis (Origin at ({observer_pos[0]:.3f},{observer_pos[1]:.3f}))')
         hax_p.set_rlim(3e-2, 3e2) # range of radius axis is larger than what is actually used (see elementwise saturation code above): this prevents clipping of the marker on the edges of the coordinate system
         rticks=[0.1, 1, 10, 100]
         hax_p.yaxis.set_major_locator(matplotlib.ticker.FixedLocator(rticks))
         hax_p.set_yticklabels([str(t) for t in rticks])
-        hax_p.set_thetagrids([0,90,180,270], ['N','E','S','W'])
+        hax_p.set_thetagrids([0,90,180,270], ['N (Geographic North)','E','S','W']) # labeling of cardinal directions, labeling N as "Geographic North" to remember user that this is *not* the pointing of the mobile device
         # follow compass conventions
         hax_p.set_theta_zero_location('N')
         hax_p.set_theta_direction(-1)

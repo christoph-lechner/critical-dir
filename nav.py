@@ -3,6 +3,7 @@ import numpy as np
 def get_nav(point1, point2):
     """
     point1 is starting coordinates
+    Coordinate format: (latitude,longitude)
 
     Literature:
     https://www.edwilliams.org/avform147.htm#Crs access 2026-05-22
@@ -22,10 +23,10 @@ def get_nav(point1, point2):
                 return -1.0
         raise ValueError(f'value outside of range [-1-eps; 1+eps] (eps={eps})')
 
-    lon1 = -np.radians(point1[0]) # Sign convention: see note above
-    lat1 =  np.radians(point1[1])
-    lon2 = -np.radians(point2[0]) # Sign convention: see note above
-    lat2 =  np.radians(point2[1])
+    lat1 =  np.radians(point1[0])
+    lon1 = -np.radians(point1[1]) # Sign convention: see note above
+    lat2 =  np.radians(point2[0])
+    lon2 = -np.radians(point2[1]) # Sign convention: see note above
 
     # we don't handle the special case with initial point being at a pole
     eps = 1e-12

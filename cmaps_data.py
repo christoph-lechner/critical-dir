@@ -7,7 +7,13 @@ import threading
 import argparse
 from threading import Event
 from pathlib import Path
-from cmaps_data_core import get_cmaps_data
+from cmaps_api import get_cmaps_data
+
+import psycopg
+from psycopg.rows import dict_row
+from db_conn import get_db_conn
+from cmaps_util import load_cmap_jsonfile
+
 
 
 cfg = {
@@ -30,6 +36,83 @@ args = parser.parse_args()
 if args.status_port:
     # import here: break early when there are missing dependencies
     from healthcheck import Healthcheck
+
+# based on loader_radverkehr.py
+# data schema, without _h field (to be added as part of loading process), without ts_entry_creating
+datacol_ddl = \
+"""
+    deviceid TEXT,
+    longitude FLOAT,
+    latitude FLOAT,
+    timestamp INT
+"""
+def prepare_stg_table(cur, stg_table):
+    #cur.execute(
+    #    f"""
+    #    CREATE TEMPORARY TABLE {stg_table} (
+    #        {datacol_ddl}
+    #    );
+    #    """
+    #)
+    cur.execute(
+        f"""
+        CREATE TEMPORARY TABLE {stg_table} (
+            {datacol_ddl}
+        );
+        """
+    )
+
+def data_add_hashes(cur, stg_dest, stg_src):
+    """
+    "stg_dest" is name of temporary destination table that is to be created by this function
+    """
+    cur.execute(
+        f"""
+        CREATE TEMPORARY TABLE {stg_dest} AS (
+            SELECT
+                MD5(CONCAT(CONCAT(deviceid,'_'),'-',CONCAT(timestamp,'_'))) AS _h,
+                deviceid,longitude,latitude,timestamp
+            FROM {stg_src}
+        );
+        """
+    )
+
+def data_dedupl(cur, stg_dest, stg_src):
+    cur.execute(
+        f"""
+            CREATE TEMPORARY TABLE {stg_dest} AS
+            WITH q AS (
+                SELECT
+                    *, ROW_NUMBER() OVER(PARTITION BY _h) AS _rn
+                FROM {stg_src}
+            )
+            SELECT
+                _h,deviceid,longitude,latitude,timestamp
+            FROM q
+            WHERE _rn=1;
+        """
+    )
+    return cur.rowcount
+
+
+def data_merge(cur, *, data_table, stg_table):
+    # Note: On match: updating data values since there could be changes to the data at a later time
+    cur.execute(
+        f"""
+        MERGE
+        INTO
+            {data_table} AS dst
+        USING
+            {stg_table} AS src
+        ON
+            dst._h=src._h
+        WHEN MATCHED THEN
+            UPDATE SET deviceid=src.deviceid, longitude=src.longitude, latitude=src.latitude, timestamp=src.timestamp
+        WHEN NOT MATCHED THEN
+            INSERT VALUES (_h,deviceid,longitude,latitude,timestamp);
+        """
+    )
+    return cur.rowcount
 
 #####
 
@@ -64,11 +147,15 @@ def t_download_worker(*,stop_event):
             deltat = deltat.total_seconds()
         return False
 
-
     def get_fn():
         tnow = datetime.datetime.now()
         tnowstr = tnow.strftime('%Y%m%dT%H%M%S_%f') # '%f' is always 6 digits wide and padded w/ leading zeros
         return cfg['datadir'] / ('data_'+tnowstr+'.json')
+
+    # establish DB connection
+    # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
+    conn = get_db_conn()
+    cur = conn.cursor(row_factory=dict_row)
 
     # schedule first request to happen at the start of the next minute
     tnext = ceil_min( datetime.datetime.now() )
@@ -87,12 +174,44 @@ def t_download_worker(*,stop_event):
             with open(fn_out,'w') as fout:
                 fout.write(data)
 
-            # heartbeat
+            # Heartbeat signaling everything is OK. The data was written stored in a file, so even if the following DB ingestion fails, we have the data.
             if status['healthcheck']:
                 status['healthcheck'].heartbeat()
-        except:
-            # design idea: Networking issues with data request are ok, file I/O issues should be re-raised to stop the program
-            raise
+        except Exception as e:
+            # Design idea to be implemented: Networking issues while getting the data are ok (this would also include any "bad" HTTP status codes such as 500),
+            # consider to re-raise file I/O issues to stop the program (but then a watchdog has to start another instance so that data acquisition goes on)
+            print('*** Data download resulted in exception ***')
+            print(traceback.format_exc())
+            continue
+
+        # DB operations are in second try/catch block to make the program more robust (for instance of a single operation fails for whatever reason)
+        # TODO: add provisions for DB connection going down.
+        try:
+            # create unique names for data staging steps
+            t0 = datetime.datetime.now()
+            str_t0 = t0.strftime('%Y%m%dT%H%M%S')
+            stg_table = 'stg_'+str_t0
+            stg_table_hashed = stg_table + '_h'
+            stg_table_dedupl = stg_table + '_d'
+
+            # prepare staging table
+            data,_ = load_cmap_jsonfile(fn_out)
+            prepare_stg_table(cur, stg_table)
+            for d in data:
+                cur.execute(
+                    'INSERT INTO ' +stg_table+ ' (deviceid,longitude,latitude,timestamp) VALUES (%s,%s,%s,%s)',
+                    (d['device'],d['longitude'],d['latitude'],d['timestamp'])
+                )
+
+            data_add_hashes(cur, stg_table_hashed, stg_table)
+            data_dedupl(cur, stg_table_dedupl, stg_table_hashed)
+            data_merge(cur, data_table='criticalmaps_data', stg_table=stg_table_dedupl)
+
+            conn.commit()
+        except Exception as e:
+            print('*** DB operations resulted in exception ***')
+            print(traceback.format_exc())
+            continue
 
 
 def main():

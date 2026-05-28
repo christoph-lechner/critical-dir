@@ -279,12 +279,14 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
     if fprefix is None:
         fprefix = 'img_123_'
 
-    def plot_new():
+    def plot_new(subplot_kwargs={}):
+        # Remark: plt.subplots and fig.add_subplot use different parameter to pass on kwargs for subplot
+        # (initially this was implemented to generate polar plot)
         if not obj_path:
-            fig,hax = plt.subplots(1)
+            fig,hax = plt.subplots(1, subplot_kw=subplot_kwargs)
         else:
             fig = Figure()
-            hax = fig.add_subplot(111)
+            hax = fig.add_subplot(111, **subplot_kwargs)
         return fig,hax
 
     def plot_show_or_save(fig, ftype):
@@ -360,6 +362,9 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
         fig,hax = plot_new()
         if only_local:
             plot_city(hax)
+        # fig_p,hax_p = plot_new({'subplot_kw':{'projection':'polar'}})
+        fig_p,hax_p = plot_new({'projection':'polar'})
+        hax_p.set_rscale('log')
         hax.plot(observer_pos[1], observer_pos[0], 'kx', label='your position')
         for id_cluster in sorted_cluster_ids:
             # if requested by user, ignore single-element 'clusters'
@@ -374,15 +379,20 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
                 cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, trace_persistence=cluster_trace_persistence, kwargs={'color':curr_color, 'alpha':0.5})
             curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':curr_color})
             initial_course,dist_rad = get_nav(observer_pos, curr_cluster_center)
+            dist_km = cfg['rho']*dist_rad
+            hax_p.plot(np.deg2rad(initial_course),dist_km, 'o',color=curr_color)
             #
             if store_ci:
-                curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, latitude=curr_cluster_center[0], longitude=curr_cluster_center[1], course=initial_course, dist=cfg['rho']*dist_rad)
+                curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, latitude=curr_cluster_center[0], longitude=curr_cluster_center[1], course=initial_course, dist=dist_km)
                 cluster_infos.append(curr_ci)
                 print(curr_ci)
             #
             cluster_counter+=1
             if cluster_counter>=cfg['max_clusters']:
                 break
+        #
+        # plot finalization #1
+        # (has to be done for ALL plots before call to 'plot_show_or_save')
         hax.set_xlabel('longitude')
         hax.set_ylabel('latitude')
         hax.set_title('Result of Clustering Analysis')
@@ -391,10 +401,27 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
             hax.set_ylim(53.35, 53.75)
         fig.legend()
         #
+        # plot finalization #2
+        hax_p.set_title('Result of Clustering Analysis')
+        import matplotlib.ticker as mticker
+        hax_p.set_rlim(1e-2, 1e3)
+        rticks=[0.1, 1, 10, 100]
+        hax_p.yaxis.set_major_locator(mticker.FixedLocator(rticks))
+        hax_p.set_yticklabels([str(t) for t in rticks])
+        hax_p.set_thetagrids([0,90,180,270], ['N','E','S','W'])
+        # follow compass conventions
+        hax_p.set_theta_zero_location('N')
+        hax_p.set_theta_direction(-1)
+        #
+        # Store plots
+        #
         my_file_key = 'clusters'
         if only_local:
             my_file_key = 'clusters_local'
         fn[my_file_key] = plot_show_or_save(fig, my_file_key)
+        if not only_local:
+            # for polar plot, local plot looks the same (currently only difference for standard plot would be adjustment of coordinate limits and plot of city geographics)
+            fn[my_file_key+'_polar'] = plot_show_or_save(fig_p, my_file_key+'_polar')
 
     geoplot_cluster_analysis(only_local=False)
     geoplot_cluster_analysis(only_local=True, store_ci=False)

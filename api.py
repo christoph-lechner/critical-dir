@@ -89,7 +89,7 @@ def location_worker(user_pos, *, flag_iso=True, cfg_cluster_dist, cfg_tpersisten
     html_info += ci_as_table(ci)
 
     # Keys of images to present FIRST (in this order)
-    top_files = ['clusters_local','clusters']
+    top_files = ['clusters_polar','clusters_local','clusters']
 
     html_imgs = ""
     print(r['files'])

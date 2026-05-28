@@ -93,7 +93,29 @@ def load_from_DB():
     # A list of dictionaries with the structure: {"device": "...", "latitude": float, "longitude": float, "timestamp": unix_epoch_value}
     # The only difference is that the latitude/longitude values have been scaled to usual (float) values, while the API returns int values (scaled up by a factor of 1E6)
     data = res_rows
-    return data,X    
+    return data,X
+
+def load_clustertestdata():
+    def make_datapoint(lat,long):
+        return {'device':'1234', 'latitude':lat, 'longitude':long, 'timestamp':1}
+
+    print('*** INFO: generating test data set. Still have to implement unique "device IDs" ***')
+
+    # Test data points on the equator (1 deg corresponds to: 2*pi*6371km/360 deg = 111.2 km/deg)
+    data = [make_datapoint(0,0), make_datapoint(0,0.1), make_datapoint(0,0.3), make_datapoint(0,1), make_datapoint(0,2),
+            #
+            make_datapoint(0,5),
+            make_datapoint(0,5.005), # with rcluster=2km this one will be part of a cluster
+            make_datapoint(0,4.98),  # with rcluster=2km this one will not be part of a cluster
+    ]
+    longitude = [_['longitude'] for _ in data]
+    latitude  = [_['latitude']  for _ in data]
+    X = np.vstack((np.array(latitude),np.array(longitude)))
+    X = np.transpose(X)
+
+    # Structure returned from DB has same structure as data loaded from JSON files (containing text obtained from CriticalMaps API interface):
+    # A list of dictionaries with the structure: {"device": "...", "latitude": float, "longitude": float, "timestamp": unix_epoch_value}
+    return data,X
 
 def spatial_filter_HH(d):
     """
@@ -398,8 +420,10 @@ if __name__=='__main__':
         data,X = load_cmap_jsonfile(datafile, spatial_filter=spatial_filter, cb_diag_file_age=cb_age)
         return data,X
 
+    r = main(f_dataloader=load_clustertestdata, observer_pos=my_pos, exclude_isolated_points=False)
+
     # load data from JSON file
     # r = main(f_dataloader=partial(dataloader_file, datafile='cmdata/data_20260528T100900_002729.json'), observer_pos=my_pos, exclude_isolated_points=False)
 
     # default loader is DB loader
-    r = main(observer_pos=my_pos, exclude_isolated_points=False)
+    # r = main(observer_pos=my_pos, exclude_isolated_points=False)

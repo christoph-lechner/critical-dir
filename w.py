@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
+import matplotlib
 # for FastAPI servers use at least backend 'Agg' (! matplotlib.pyplot is not thread-safe, see https://matplotlib.org/stable/users/faq.html#work-with-threads !)
 # ... and don't use 'plt'.
-#import matplotlib
 #matplotlib.use('Agg')
 from matplotlib.figure import Figure
 
@@ -36,6 +36,7 @@ class ClusterInfo:
     N: int
     course: float
     dist: float
+    marker_color_html: str
     def __str__(self):
         return f"ID={self.cluster_ID}: N={self.N}, center={self.latitude}, {self.longitude}, course={self.course} deg, dist={self.dist}"
     def table_header(self):
@@ -43,7 +44,7 @@ class ClusterInfo:
         return '<tr><td>(ID)</td><td>N</td><td>center</td><td>course [deg]</td><td>dist [km]</td></tr>'
     def as_html(self):
         # replace by jinja template?
-        return f"<tr><td>{self.cluster_ID}</td><td>{self.N}</td><td>{self.latitude:.2f}, {self.longitude:.2f}</td><td>{self.course:.2f}</td><td>{self.dist:.2f}</td></tr>"
+        return f"<tr><td style=\"background-color: {self.marker_color_html}\">{self.cluster_ID}</td><td>{self.N}</td><td>{self.latitude:.2f}, {self.longitude:.2f}</td><td>{self.course:.2f}</td><td>{self.dist:.2f}</td></tr>"
 
 
 cfg = {
@@ -384,7 +385,7 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
             hax_p.plot(np.deg2rad(initial_course),dist_km_saturated, 'o',color=curr_color)
             #
             if store_ci:
-                curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, latitude=curr_cluster_center[0], longitude=curr_cluster_center[1], course=initial_course, dist=dist_km)
+                curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, latitude=curr_cluster_center[0], longitude=curr_cluster_center[1], course=initial_course, dist=dist_km, marker_color_html=matplotlib.colors.to_hex(curr_color))
                 cluster_infos.append(curr_ci)
                 print(curr_ci)
             #
@@ -404,10 +405,9 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
         #
         # plot finalization #2
         hax_p.set_title('Result of Clustering Analysis')
-        import matplotlib.ticker as mticker
         hax_p.set_rlim(3e-2, 3e2) # range of radius axis is larger than what is actually used (see elementwise saturation code above): this prevents clipping of the marker on the edges of the coordinate system
         rticks=[0.1, 1, 10, 100]
-        hax_p.yaxis.set_major_locator(mticker.FixedLocator(rticks))
+        hax_p.yaxis.set_major_locator(matplotlib.ticker.FixedLocator(rticks))
         hax_p.set_yticklabels([str(t) for t in rticks])
         hax_p.set_thetagrids([0,90,180,270], ['N','E','S','W'])
         # follow compass conventions

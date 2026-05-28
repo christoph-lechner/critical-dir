@@ -420,10 +420,11 @@ if __name__=='__main__':
         data,X = load_cmap_jsonfile(datafile, spatial_filter=spatial_filter, cb_diag_file_age=cb_age)
         return data,X
 
-    r = main(f_dataloader=load_clustertestdata, observer_pos=my_pos, exclude_isolated_points=False)
+    # hard-coded test data for clustering algorithm
+    # r = main(f_dataloader=load_clustertestdata, observer_pos=my_pos, exclude_isolated_points=False)
 
     # load data from JSON file
     # r = main(f_dataloader=partial(dataloader_file, datafile='cmdata/data_20260528T100900_002729.json'), observer_pos=my_pos, exclude_isolated_points=False)
 
     # default loader is DB loader
-    # r = main(observer_pos=my_pos, exclude_isolated_points=False)
+    r = main(observer_pos=my_pos, exclude_isolated_points=False)

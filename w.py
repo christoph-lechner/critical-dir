@@ -19,6 +19,7 @@ from collections import Counter
 from pathlib import Path
 from dataclasses import dataclass
 import geopandas as gpd
+from functools import partial
 from nav import get_nav
 from my_util_files import get_list_of_files
 from cmaps_util import load_cmap_jsonfile
@@ -53,6 +54,46 @@ cfg = {
     ### constants ###
     'rho': 6371, # km, radius of Earth (in spherical approximation)
 }
+
+
+
+def load_from_DB():
+    """
+    First implementation to retrieve most recent coordinates seen for every device.
+    Uses temporal cut-off. If cut-off time is different from that used by API server (sending JSON data files), the data points in the dataset will be different as well -- for instance if a mobile device starts/ceases sending data.
+    Currently emulates data structure returned by JSON loading function.
+    """
+    # print('loading current positions from DB')
+    # establish DB connection
+    # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
+    conn = get_db_conn()
+    cur = conn.cursor(row_factory=dict_row)
+
+    cur.execute(
+        """
+        WITH qq AS (
+            WITH q_ts_mostrecent AS (
+                SELECT MAX(timestamp) AS timestamp_mostrecent FROM criticalmaps_data
+            )
+            SELECT
+                c.deviceid,c.longitude,c.latitude,c.timestamp, ROW_NUMBER() OVER (PARTITION BY c.deviceid ORDER BY c.timestamp DESC) AS rn
+            FROM criticalmaps_data AS c, q_ts_mostrecent
+            WHERE timestamp>=q_ts_mostrecent.timestamp_mostrecent-150
+        )
+        SELECT deviceid AS device, longitude, latitude, timestamp FROM qq WHERE rn=1;
+        """
+    )
+    res_rows = cur.fetchall()
+    longitude = [_['longitude'] for _ in res_rows]
+    latitude  = [_['latitude']  for _ in res_rows]
+    X = np.vstack((np.array(latitude),np.array(longitude)))
+    X = np.transpose(X)
+
+    # Structure returned from DB has same structure as data loaded from JSON files (containing text obtained from CriticalMaps API interface):
+    # A list of dictionaries with the structure: {"device": "...", "latitude": float, "longitude": float, "timestamp": unix_epoch_value}
+    # The only difference is that the latitude/longitude values have been scaled to usual (float) values, while the API returns int values (scaled up by a factor of 1E6)
+    data = res_rows
+    return data,X    
 
 def spatial_filter_HH(d):
     """
@@ -197,10 +238,10 @@ def cluster_plot_persistence(*, hax, cluster_complete_data, cluster_labels, id_c
         plot_device_trace(cur=cur, hax=hax, deviceid=curr_devid, timestamp_min=timecutoff_epoch, kwargs=kwargs)
         
 
-def main(*,datafile=None, observer_pos, spatial_filter=None, obj_path=None, fprefix=None, exclude_isolated_points=True, cluster_dist_thres=None, cluster_trace_persistence=900):
+def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None, exclude_isolated_points=True, cluster_dist_thres=None, cluster_trace_persistence=900):
     """
+    f_dataloader: Function that is called (without any arguments) to load the data to be processed, expected to return two objects: data,X. 'data' is the data formatted as in the JSON file, X is the matrix containing geodata for clustering process.
     obj_path: If provided, this switches on storing images to files instead of displaying them
-    spatial_filter: function used for spatial filtering. Takes single argument (JSON data point) and returns True if point is to be retained
     """
 
     ### HERE WE COLLECT INFOS TO BE RETURNED TO CALLER (= the client via the API server) ###
@@ -235,50 +276,9 @@ def main(*,datafile=None, observer_pos, spatial_filter=None, obj_path=None, fpre
         # returning the relative path since the webclient sees a different path layout than the server
         return rel_path
 
-    def cb_age(age):
-        if age>cfg['warn_file_age']:
-            diag_info.append(f'WARNING: file is {age} seconds old')
-            print(f'WARNING: file is {age} seconds old')
-
-
-    def load_from_DB():
-        """
-        First implementation to retrieve most recent coordinates seen for every device.
-        Uses temporal cut-off. If cut-off time is different from that used by API server (sending JSON data files), the data points in the dataset will be different as well -- for instance if a mobile device starts/ceases sending data.
-        Currently emulates data structure returned by JSON loading function.
-        """
-        # establish DB connection
-        # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
-        conn = get_db_conn()
-        cur = conn.cursor(row_factory=dict_row)
-
-        cur.execute(
-            """
-            WITH qq AS (
-                WITH q_ts_mostrecent AS (
-                    SELECT MAX(timestamp) AS timestamp_mostrecent FROM criticalmaps_data
-                )
-                SELECT
-                    c.deviceid,c.longitude,c.latitude,c.timestamp, ROW_NUMBER() OVER (PARTITION BY c.deviceid ORDER BY c.timestamp DESC) AS rn
-                FROM criticalmaps_data AS c, q_ts_mostrecent
-                WHERE timestamp>=q_ts_mostrecent.timestamp_mostrecent-150
-            )
-            SELECT deviceid AS device, longitude, latitude, timestamp FROM qq WHERE rn=1;
-            """
-        )
-        res_rows = cur.fetchall()
-        longitude = [_['longitude'] for _ in res_rows]
-        latitude  = [_['latitude']  for _ in res_rows]
-        X = np.vstack((np.array(latitude),np.array(longitude)))
-        X = np.transpose(X)
-        data = res_rows
-        return data,X
-    
-    if datafile:
-        data,X = load_cmap_jsonfile(datafile, spatial_filter=spatial_filter, cb_diag_file_age=cb_age)
-    else:
-        print('loading current positions from DB')
-        data,X = load_from_DB()
+    if not (f_dataloader and callable(f_dataloader)):
+        raise ValueError('expecting function')
+    data,X = f_dataloader()
 
     """
     Cluster and plot dendrogram
@@ -382,6 +382,22 @@ if __name__=='__main__':
     # fixed dummy position in Hamburg for dev purposes
     my_pos = np.array([53.55, 10.0])
 
-    # r = main(datafile='data.json', observer_pos=my_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs'))
-    # r = main(datafile='cmdata/data_20260526T220330_002729.json', observer_pos=my_pos, exclude_isolated_points=False)
+    def cb_age(age):
+        if age>cfg['warn_file_age']:
+            # diag_info.append(f'WARNING: file is {age} seconds old') # FIXME
+            print(f'WARNING: file is {age} seconds old')
+
+    def dataloader_file(datafile, spatial_filter=None):
+        """
+        datafile: name of file to be loaded (NOTE: functools.partial can be used to obtain a function with frozen argument values to be passed to the data processing function)
+        spatial_filter: function used for spatial filtering. Takes single argument (JSON data point) and returns True if point is to be retained
+        """
+        print(f'loading data from file {datafile}')
+        data,X = load_cmap_jsonfile(datafile, spatial_filter=spatial_filter, cb_diag_file_age=cb_age)
+        return data,X
+
+    # load data from JSON file
+    # r = main(f_dataloader=partial(dataloader_file, datafile='cmdata/data_20260528T100900_002729.json'), observer_pos=my_pos, exclude_isolated_points=False)
+
+    # default loader is DB loader
     r = main(observer_pos=my_pos, exclude_isolated_points=False)

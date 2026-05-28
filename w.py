@@ -356,7 +356,7 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
 
     def geoplot_cluster_analysis(*, only_local=False, store_ci=True):
         from itertools import cycle
-        iter_colors = cycle(['b','r','g'])
+        iter_colors = cycle(['blue','orange','green','red','purple','brown','pink','olive','cyan']) # default colors except gray (used for city limits, etc.) https://matplotlib.org/stable/gallery/color/color_cycle_default.html
         cluster_counter=0
 
         fig,hax = plot_new()
@@ -380,7 +380,8 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
             curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':curr_color})
             initial_course,dist_rad = get_nav(observer_pos, curr_cluster_center)
             dist_km = cfg['rho']*dist_rad
-            hax_p.plot(np.deg2rad(initial_course),dist_km, 'o',color=curr_color)
+            dist_km_saturated = np.maximum(0.1, np.minimum(dist_km, 100)) # elementwise saturation (large values are capped; for small values some radius_minimum is displayed)
+            hax_p.plot(np.deg2rad(initial_course),dist_km_saturated, 'o',color=curr_color)
             #
             if store_ci:
                 curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, latitude=curr_cluster_center[0], longitude=curr_cluster_center[1], course=initial_course, dist=dist_km)
@@ -404,7 +405,7 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
         # plot finalization #2
         hax_p.set_title('Result of Clustering Analysis')
         import matplotlib.ticker as mticker
-        hax_p.set_rlim(1e-2, 1e3)
+        hax_p.set_rlim(3e-2, 3e2) # range of radius axis is larger than what is actually used (see elementwise saturation code above): this prevents clipping of the marker on the edges of the coordinate system
         rticks=[0.1, 1, 10, 100]
         hax_p.yaxis.set_major_locator(mticker.FixedLocator(rticks))
         hax_p.set_yticklabels([str(t) for t in rticks])

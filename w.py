@@ -304,6 +304,8 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
     if not (f_dataloader and callable(f_dataloader)):
         raise ValueError('expecting function')
     data,X = f_dataloader()
+    nriders = len(data)
+    diag_info.append(f'Total number of currently active riders: {nriders} (also includes riders not in any local cluster)')
 
     """
     Cluster and plot dendrogram

@@ -41,10 +41,10 @@ class ClusterInfo:
         return f"ID={self.cluster_ID}: N={self.N}, center={self.latitude}, {self.longitude}, course={self.course} deg, dist={self.dist}"
     def table_header(self):
         # part of dervied dataclass to ensure that header and string representation of rows have matching layout
-        return '<tr><td>(ID)</td><td>N</td><td>center</td><td>course [deg]</td><td>dist [km]</td></tr>'
+        return '<tr><td>(ID)</td><td>N</td><td>center</td><td>course [deg]</td><td>dist [km]</td><td><!-- for inspect link --></td></tr>'
     def as_html(self):
         # replace by jinja template?
-        return f"<tr><td style=\"background-color: {self.marker_color_html}\">{self.cluster_ID}</td><td>{self.N}</td><td>{self.latitude:.2f}, {self.longitude:.2f}</td><td>{self.course:.2f}</td><td>{self.dist:.2f}</td></tr>"
+        return f"<tr><td style=\"background-color: {self.marker_color_html}\">{self.cluster_ID}</td><td>{self.N}</td><td>{self.latitude:.2f}, {self.longitude:.2f}</td><td>{self.course:.2f}</td><td>{self.dist:.2f}</td><td><a href=\"api/inspect?clat={self.latitude:.6f}&clong={self.longitude:.6f}\" target=\"_blank\">Inspect</a></td></tr>"
 
 
 cfg = {
@@ -259,7 +259,74 @@ def cluster_plot_persistence(*, hax, cluster_complete_data, cluster_labels, id_c
         curr_devid = cluster_complete_data[p]['device']
         timecutoff_epoch = time.time() - trace_persistence
         plot_device_trace(cur=cur, hax=hax, deviceid=curr_devid, timestamp_min=timecutoff_epoch, kwargs=kwargs)
-        
+
+
+def inspect_generate_img(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None):
+    """
+    f_dataloader: Function that is called (without any arguments) to load the data to be processed, expected to return two objects: data,X. 'data' is the data formatted as in the JSON file, X is the matrix containing geodata for clustering process.
+    obj_path: If provided, this switches on storing images to files instead of displaying them
+    """
+    # REMARK: function is based on modified copy of main plotting function
+
+    # fprefix should be unique to this session
+    if fprefix is None:
+        fprefix = 'img_123_'
+
+    def plot_new(subplot_kwargs={}):
+        # Remark: plt.subplots and fig.add_subplot use different parameter to pass on kwargs for subplot
+        # (initially this was implemented to generate polar plot)
+        if not obj_path:
+            fig,hax = plt.subplots(1, subplot_kw=subplot_kwargs)
+        else:
+            fig = Figure()
+            hax = fig.add_subplot(111, **subplot_kwargs)
+        return fig,hax
+
+    def plot_show_or_save(fig, ftype):
+        if not (obj_path and isinstance(obj_path,Path)):
+            plt.show()
+            return
+        rel_path = (fprefix+ftype+'.png')
+        absolute_path = obj_path / rel_path
+        fig.savefig(absolute_path, dpi=150, bbox_inches='tight')
+        plt.close(fig) # frees resources
+        # returning the relative path since the webclient sees a different path layout than the server
+        return rel_path
+
+    if not (f_dataloader and callable(f_dataloader)):
+        raise ValueError('expecting function')
+    data,X = f_dataloader()
+
+    fig,hax = plot_new()
+    hax.plot(observer_pos[1], observer_pos[0], 'kx', label='center')
+    hax.plot(X[:,1],X[:,0], 'bo', label='rider positions')
+    """
+    #
+    # for correct z stacking: plot persistence traces first (would be better to plot *all* persistence traces first, then all current positions)
+    curr_color = next(iter_colors)
+    if f_dataloader==load_from_DB:
+        # trace persistence currently only for data coming from SQL DB
+        cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, trace_persistence=cluster_trace_persistence, kwargs={'color':curr_color, 'alpha':0.5})
+    curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':curr_color})
+    """
+    #
+    # plot finalization #1
+    # (has to be done for ALL plots before call to 'plot_show_or_save')
+    hax.set_xlabel('longitude')
+    hax.set_ylabel('latitude')
+    # define range (TODO: this is only a very first implementation, it needs to be refined to always show approx +/- 3km of the local "map", independent of latitude)
+    drange = 0.03 # for longitude on the equator: approx 3km
+    hax.set_xlim(observer_pos[1]-drange,observer_pos[1]+drange)
+    hax.set_ylim(observer_pos[0]-drange,observer_pos[0]+drange)
+    fig.legend()
+    #
+    # Store plot
+    #
+    fn = {}
+    my_file_key = 'inspect'
+    fn[my_file_key] = plot_show_or_save(fig, my_file_key)
+
+    return {'files':fn}
 
 def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None, exclude_isolated_points=True, cluster_dist_thres=None, cluster_trace_persistence=900):
     """

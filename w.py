@@ -261,7 +261,7 @@ def cluster_plot_persistence(*, hax, cluster_complete_data, cluster_labels, id_c
         plot_device_trace(cur=cur, hax=hax, deviceid=curr_devid, timestamp_min=timecutoff_epoch, kwargs=kwargs)
 
 
-def inspect_generate_img(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None):
+def inspect_generate_img(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None, trace_persistence=900):
     """
     f_dataloader: Function that is called (without any arguments) to load the data to be processed, expected to return two objects: data,X. 'data' is the data formatted as in the JSON file, X is the matrix containing geodata for clustering process.
     obj_path: If provided, this switches on storing images to files instead of displaying them
@@ -297,20 +297,22 @@ def inspect_generate_img(*, f_dataloader=load_from_DB, observer_pos, obj_path=No
         raise ValueError('expecting function')
     data,X = f_dataloader()
 
+    # establish DB connection
+    # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
+    conn = get_db_conn()
+    cur = conn.cursor(row_factory=dict_row)
+
+    # Plotting remark: for correct z stacking: plot persistence traces first (would be better to plot *all* persistence traces first, then all current positions)
     fig,hax = plot_new()
-    hax.plot(observer_pos[1], observer_pos[0], 'kx', label='center')
+    # plot persistence (FIXME: no need to loop over all devices currently visible world-wide, just process local ones)
+    for q in data:
+        curr_devid = q['device']
+        timecutoff_epoch = time.time() - trace_persistence
+        plot_device_trace(cur=cur, hax=hax, deviceid=curr_devid, timestamp_min=timecutoff_epoch, kwargs={'color':'b', 'alpha':0.5})
     hax.plot(X[:,1],X[:,0], 'bo', label='rider positions')
-    """
+    hax.plot(observer_pos[1], observer_pos[0], 'kx', label='center')
     #
-    # for correct z stacking: plot persistence traces first (would be better to plot *all* persistence traces first, then all current positions)
-    curr_color = next(iter_colors)
-    if f_dataloader==load_from_DB:
-        # trace persistence currently only for data coming from SQL DB
-        cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, trace_persistence=cluster_trace_persistence, kwargs={'color':curr_color, 'alpha':0.5})
-    curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':curr_color})
-    """
-    #
-    # plot finalization #1
+    # plot finalization
     # (has to be done for ALL plots before call to 'plot_show_or_save')
     hax.set_xlabel('longitude')
     hax.set_ylabel('latitude')

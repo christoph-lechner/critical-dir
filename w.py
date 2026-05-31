@@ -473,8 +473,7 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
     fn['dendrogram'] = plot_show_or_save(fig, 'dendrogram')
 
 
-
-    # points that have no neighbor within the distance threshould count as single-element cluster with their own ID
+    # Note: points that have no neighbor within the distance threshould count as single-element cluster with their own ID
     counts_cluster_labels = Counter(cluster_labels)
     counts_cluster_labels = sorted(counts_cluster_labels.items(), key=lambda _: _[1], reverse=True)
     # print(counts_cluster_labels)
@@ -488,7 +487,7 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
         from itertools import cycle
         # Colors we use to indicate cluster points.
         # These are the matplotlib default colors except gray, https://matplotlib.org/stable/gallery/color/color_cycle_default.html
-        # Grat is used to indicate city limits, devices that are not considered for cluster analysis because they are stationary, etc.
+        # Gray is used to indicate city limits, devices that are not considered for cluster analysis because they are stationary, etc.
         iter_colors = cycle(['blue','orange','green','red','purple','brown','pink','olive','cyan'])
         cluster_counter=0
 
@@ -500,10 +499,30 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
         # for correct z-stacking: plot city limits and all known devices first
         if only_local:
             plot_city(hax)
-        if ag.exclude_stationary_devices or ag.exclude_isolated_points:
-            Xtmp = generate_input_for_clusteralgo(data_complete)
-            hax.plot(Xtmp[:,1], Xtmp[:,0], 'o', color='gray', label='known devices')
+        if ag.exclude_stationary_devices:
+            data_complete_stationary = list( filter(lambda d: d['flag_in_motion']==0, data_complete) )
+            Xtmp = generate_input_for_clusteralgo(data_complete_stationary)
+            hax.plot(Xtmp[:,1], Xtmp[:,0], '+', color='gray', label='stationary devices')
+        if ag.exclude_isolated_points:
+            # List IDs of single-element clusters
+            # (key is cluster ID, value is number of elements)
+            single_element_cluster_labels = []
+            for cluster_label,cluster_nene in counts_cluster_labels:
+                if cluster_nene==1:
+                    single_element_cluster_labels.append(int(cluster_label)) # cast to get rid of np.int64
+            # Translate collected cluster labels in indices into data matrix
+            idx_datapoints_single_element_clusters = []
+            for qqq in single_element_cluster_labels:
+                idx_datapoints_single_element_clusters.append(
+                    [_ for _,x in enumerate(cluster_labels) if x==qqq]
+                )
+            # FIXME: here we have a nested "list of lists" -> generate single-level list
+            from itertools import chain
+            idx_datapoints_single_element_clusters = list(chain.from_iterable(idx_datapoints_single_element_clusters))
 
+            Xtmp = generate_input_for_clusteralgo(data)
+            Xtmp_SEclusters = Xtmp[idx_datapoints_single_element_clusters,:]
+            hax.plot(Xtmp_SEclusters[:,1], Xtmp_SEclusters[:,0], 'o', color='gray', markerfacecolor='none', label='single-element "clusters"')
 
         for id_cluster in sorted_cluster_ids:
             # if requested by user, ignore single-element 'clusters'

@@ -74,11 +74,11 @@ def generate_input_for_clusteralgo(data):
     return X
 
 
-def load_from_DB(*, exclude_stationary=True):
+def load_from_DB(return_all_fields=True):
     """
     First implementation to retrieve most recent coordinates seen for every device.
-    Uses temporal cut-off. If cut-off time is different from that used by API server (sending JSON data files), the data points in the dataset will be different as well -- for instance if a mobile device starts/ceases sending data.
-    Currently emulates data structure returned by JSON loading function.
+    Uses temporal cut-off. If cut-off time is different from that used by CriticalMaps API server (source of the used data), the data points in the dataset will be different as well -- for instance if a device starts/ceases sending data.
+    return_all_fields=False: emulate data structure returned by JSON loading function.
     """
     # print('loading current positions from DB')
     # establish DB connection
@@ -123,10 +123,8 @@ def load_from_DB(*, exclude_stationary=True):
         (crit_stationary_radius,)
     )
     res_rows_complete = cur.fetchall()
-    if exclude_stationary:
-        res_rows_filt = list( filter(lambda d: d['flag_in_motion']==1, res_rows_complete) )
-    else:
-        res_rows_filt = res_rows_complete
+    if return_all_fields:
+        return res_rows_complete
 
     # Structure returned from DB has same structure as data loaded from JSON files (containing text obtained from CriticalMaps API interface):
     # A list of dictionaries with the structure: {"device": "...", "latitude": float, "longitude": float, "timestamp": unix_epoch_value}
@@ -416,11 +414,24 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
 
     if not (f_dataloader and callable(f_dataloader)):
         raise ValueError('expecting function')
-    data = f_dataloader()
-    nriders = len(data)
-    diag_info.append(f'Total number of currently active riders: {nriders} (also includes riders not in any local cluster)')
+    # Note: nomenclature: "complete" means all fields returned from the loader function. If DB is used as data source, additional information may be provided
+    data_complete = f_dataloader()
+    data_complete_moving = list( filter(lambda d: d['flag_in_motion']==1, data_complete) )
+    ndev_tot = len(data_complete)
+    ndev_moving = len(data_complete_moving)
+    diag_info.append(
+        f"""
+        Breakdown of data:
+        Total number of devices: {ndev_tot};
+        Number of moving devices: {ndev_moving}
+        """
+    )
 
-    X = generate_input_for_clusteralgo(data)
+    # Determine what data will be used for cluster analysis
+    if ag.exclude_stationary_devices:
+        data = data_complete_moving
+    else:
+        data = data_complete
 
     """
     Cluster and plot dendrogram
@@ -432,6 +443,7 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
     # -> May not be needed, because AgglomerativeClustering supports metric='haversine' out-of-the-box.
     #    But keeping it because it helps to understand what the cluster algorithm did
     #####
+    X = generate_input_for_clusteralgo(data)
     # for the clustering algorithm, we need long/lat in radians
     Xrad = np.radians(X)
 
@@ -474,16 +486,25 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
 
     def geoplot_cluster_analysis(*, only_local=False, store_ci=True):
         from itertools import cycle
-        iter_colors = cycle(['blue','orange','green','red','purple','brown','pink','olive','cyan']) # default colors except gray (used for city limits, etc.) https://matplotlib.org/stable/gallery/color/color_cycle_default.html
+        # Colors we use to indicate cluster points.
+        # These are the matplotlib default colors except gray, https://matplotlib.org/stable/gallery/color/color_cycle_default.html
+        # Grat is used to indicate city limits, devices that are not considered for cluster analysis because they are stationary, etc.
+        iter_colors = cycle(['blue','orange','green','red','purple','brown','pink','olive','cyan'])
         cluster_counter=0
 
         fig,hax = plot_new()
-        if only_local:
-            plot_city(hax)
         # fig_p,hax_p = plot_new({'subplot_kw':{'projection':'polar'}})
         fig_p,hax_p = plot_new({'projection':'polar'})
         hax_p.set_rscale('log')
-        hax.plot(observer_pos[1], observer_pos[0], 'kx', label='your position')
+
+        # for correct z-stacking: plot city limits and all known devices first
+        if only_local:
+            plot_city(hax)
+        if ag.exclude_stationary_devices or ag.exclude_isolated_points:
+            Xtmp = generate_input_for_clusteralgo(data_complete)
+            hax.plot(Xtmp[:,1], Xtmp[:,0], 'o', color='gray', label='known devices')
+
+
         for id_cluster in sorted_cluster_ids:
             # if requested by user, ignore single-element 'clusters'
             curr_cluster_nele = dict(counts_cluster_labels)[id_cluster]
@@ -512,6 +533,7 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
         #
         # plot finalization #1
         # (has to be done for ALL plots before call to 'plot_show_or_save')
+        hax.plot(observer_pos[1], observer_pos[0], 'kx', label='your position')
         hax.set_xlabel('longitude')
         hax.set_ylabel('latitude')
         hax.set_title('Result of Clustering Analysis')

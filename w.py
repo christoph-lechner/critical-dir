@@ -46,10 +46,17 @@ class ClusterInfo:
         # replace by jinja template?
         return f"<tr><td style=\"background-color: {self.marker_color_html}\">{self.cluster_ID}</td><td>{self.N}</td><td>{self.latitude:.2f}, {self.longitude:.2f}</td><td>{self.course:.2f}</td><td>{self.dist:.2f}</td><td><a href=\"api/inspect?clat={self.latitude:.6f}&clong={self.longitude:.6f}\" target=\"_blank\">Inspect</a></td></tr>"
 
+@dataclass
+class AlgoConfig:
+    exclude_isolated_points: bool    = True
+    exclude_stationary_devices: bool = True
+    cluster_dist_thres: float        = 2    # km
+    device_trace_persistence: float  = 900  # seconds
+
 
 cfg = {
     'warn_file_age': 120, # seconds
-    'r_thres': 2, # km, radius used for clustering (note: converted to great-circle angle using radius of Earth)
+    # 'r_thres': 2, # km, radius used for clustering (note: converted to great-circle angle using radius of Earth)
 
     'max_clusters': 1000,
     ### constants ###
@@ -301,7 +308,7 @@ def cluster_plot_persistence(*, hax, cluster_complete_data, cluster_labels, id_c
         plot_device_trace(cur=cur, hax=hax, deviceid=curr_devid, timestamp_min=timecutoff_epoch, kwargs=kwargs)
 
 
-def inspect_generate_img(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None, trace_persistence=900):
+def inspect_generate_img(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None, ag: AlgoConfig):
     """
     f_dataloader: Function that is called (without any arguments) to load the data to be processed, expected to return two objects: data,X. 'data' is the data formatted as in the JSON file, X is the matrix containing geodata for clustering process.
     obj_path: If provided, this switches on storing images to files instead of displaying them
@@ -335,7 +342,8 @@ def inspect_generate_img(*, f_dataloader=load_from_DB, observer_pos, obj_path=No
 
     if not (f_dataloader and callable(f_dataloader)):
         raise ValueError('expecting function')
-    data,X = f_dataloader()
+    data = f_dataloader()
+    X = generate_input_for_clusteralgo(data)
 
     # establish DB connection
     # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
@@ -347,7 +355,7 @@ def inspect_generate_img(*, f_dataloader=load_from_DB, observer_pos, obj_path=No
     # plot persistence (FIXME: no need to loop over all devices currently visible world-wide, just process local ones)
     for q in data:
         curr_devid = q['device']
-        timecutoff_epoch = time.time() - trace_persistence
+        timecutoff_epoch = time.time() - ag.device_trace_persistence
         plot_device_trace(cur=cur, hax=hax, deviceid=curr_devid, timestamp_min=timecutoff_epoch, kwargs={'color':'b', 'alpha':0.5})
     hax.plot(X[:,1],X[:,0], 'bo', label='rider positions')
     hax.plot(observer_pos[1], observer_pos[0], 'kx', label='center')
@@ -370,7 +378,7 @@ def inspect_generate_img(*, f_dataloader=load_from_DB, observer_pos, obj_path=No
 
     return {'files':fn}
 
-def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None, exclude_isolated_points=True, cluster_dist_thres=None, cluster_trace_persistence=900):
+def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None, ag: AlgoConfig):
     """
     f_dataloader: Function that is called (without any arguments) to load the data to be processed, expected to return two objects: data,X. 'data' is the data formatted as in the JSON file, X is the matrix containing geodata for clustering process.
     obj_path: If provided, this switches on storing images to files instead of displaying them
@@ -380,10 +388,6 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
     diag_info = []
     cluster_infos = []
     fn = {}
-
-    # caller can override value of distance threshold for clustering process
-    if cluster_dist_thres:
-        cfg['r_thres'] = cluster_dist_thres
 
     # fprefix should be unique to this session
     if fprefix is None:
@@ -440,7 +444,7 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
     ### TODO: understand what the default linkage 'ward' does
 
     # setting distance_threshold=0 ensures we compute the full tree.
-    mu_thres = cfg['r_thres']/cfg['rho']
+    mu_thres = ag.cluster_dist_thres/cfg['rho']
     model = AgglomerativeClustering(metric='haversine', linkage='single', distance_threshold=mu_thres, n_clusters=None)
     cluster_labels = model.fit_predict(Xrad)
     # print(cluster_labels)
@@ -449,7 +453,7 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
     fig,hax = plot_new()
     hax.set_title("Hierarchical Clustering Dendrogram")
     # plot the top three levels of the dendrogram
-    plot_dendrogram(hax, model, truncate_mode="level", p=7, color_threshold=cfg['r_thres'])
+    plot_dendrogram(hax, model, truncate_mode="level", p=7, color_threshold=ag.cluster_dist_thres)
     hax.set_xlabel("number of points in node (or index of point if no parenthesis)")
     hax.set_ylabel("distance [km]")
     hax.set_ylim(0.1, 3.5*cfg['rho']) # maximum length of great circle is pi*radius
@@ -483,14 +487,14 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
         for id_cluster in sorted_cluster_ids:
             # if requested by user, ignore single-element 'clusters'
             curr_cluster_nele = dict(counts_cluster_labels)[id_cluster]
-            if exclude_isolated_points and curr_cluster_nele<=1:
+            if ag.exclude_isolated_points and curr_cluster_nele<=1:
                 continue
             #
             # for correct z stacking: plot persistence traces first (would be better to plot *all* persistence traces first, then all current positions)
             curr_color = next(iter_colors)
             if f_dataloader==load_from_DB:
                 # trace persistence currently only for data coming from SQL DB
-                cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, trace_persistence=cluster_trace_persistence, kwargs={'color':curr_color, 'alpha':0.5})
+                cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, trace_persistence=ag.device_trace_persistence, kwargs={'color':curr_color, 'alpha':0.5})
             curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':curr_color})
             initial_course,dist_rad = get_nav(observer_pos, curr_cluster_center)
             dist_km = cfg['rho']*dist_rad
@@ -568,4 +572,4 @@ if __name__=='__main__':
     # r = main(f_dataloader=partial(dataloader_file, datafile='cmdata/data_20260528T100900_002729.json'), observer_pos=my_pos, exclude_isolated_points=False)
 
     # default loader is DB loader
-    r = main(observer_pos=my_pos, exclude_isolated_points=False)
+    r = main(observer_pos=my_pos, ag = AlgoConfig(exclude_isolated_points = False))

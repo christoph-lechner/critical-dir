@@ -11,7 +11,7 @@ import numpy as np
 from pathlib import Path
 import datetime
 
-from w import main,inspect_generate_img
+from w import AlgoConfig,main,inspect_generate_img
 
 class LocationRequest(BaseModel):
     latitude: float
@@ -55,8 +55,10 @@ def location_worker(user_pos, *, flag_iso=True, cfg_cluster_dist, cfg_tpersisten
     # no datafile given --> use DB for current positions
     r = main(
             observer_pos=user_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix,
-            exclude_isolated_points=flag_iso, cluster_dist_thres=cfg_cluster_dist, cluster_trace_persistence=cfg_tpersistence
+            # exclude_isolated_points=flag_iso, cluster_dist_thres=cfg_cluster_dist, cluster_trace_persistence=cfg_tpersistence
+            ag = AlgoConfig(exclude_isolated_points=flag_iso, exclude_stationary_devices=True, cluster_dist_thres=cfg_cluster_dist, device_trace_persistence=cfg_tpersistence)
     )
+
 
     diag_info = '<h3>Diag Infos</h3>'
     diag_info += f'Server time: {tstr}<br>'
@@ -151,7 +153,7 @@ async def inspect(clat: float, clong: float):
     tstr = tnow.strftime('%Y%m%dT%H%M%S.%f')
     fprefix = f'img_{tstr}_'
     fn_img = inspect_worker(lat=clat, long=clong)
-    r = inspect_generate_img(observer_pos=[clat,clong], obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix)
+    r = inspect_generate_img(observer_pos=[clat,clong], obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix, ag=AlgoConfig())
     fn_img = r['files']['inspect']
     html = f"<html><body><a href=/myapp/>For iPhone PWA: Back</a><p>Inspecting local distribution of riders around {clat:.4f},{clong:.4f}. Note that this plot does not indicate cluster infos, so all positions are indicated with same marker color.<img src=\"objs/{fn_img}\"></body></html>"
     return HTMLResponse(content=html)

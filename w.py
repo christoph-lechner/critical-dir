@@ -58,7 +58,7 @@ cfg = {
 
 
 
-def load_from_DB():
+def load_from_DB(*, exclude_stationary=True):
     """
     First implementation to retrieve most recent coordinates seen for every device.
     Uses temporal cut-off. If cut-off time is different from that used by API server (sending JSON data files), the data points in the dataset will be different as well -- for instance if a mobile device starts/ceases sending data.
@@ -72,19 +72,49 @@ def load_from_DB():
 
     cur.execute(
         """
-        WITH qq AS (
-            WITH q_ts_mostrecent AS (
-                SELECT MAX(timestamp) AS timestamp_mostrecent FROM criticalmaps_data
-            )
+        WITH q_ts_mostrecent AS (
+            SELECT MAX(timestamp) AS timestamp_mostrecent FROM criticalmaps_data
+        ), qq AS (
             SELECT
-                c.deviceid,c.longitude,c.latitude,c.timestamp, ROW_NUMBER() OVER (PARTITION BY c.deviceid ORDER BY c.timestamp DESC) AS rn
+                c.deviceid,c.latitude,c.longitude,c.timestamp, ROW_NUMBER() OVER (PARTITION BY c.deviceid ORDER BY c.timestamp DESC) AS rn
             FROM criticalmaps_data AS c, q_ts_mostrecent
             WHERE timestamp>=q_ts_mostrecent.timestamp_mostrecent-150
         )
-        SELECT deviceid AS device, longitude, latitude, timestamp FROM qq WHERE rn=1;
+        SELECT
+            deviceid AS device, latitude, longitude, timestamp,
+            CASE
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM criticalmaps_data AS c, q_ts_mostrecent
+                    WHERE c.deviceid=qq.deviceid
+                        -- consider only recent history for checking if there were any movements
+                        AND c.timestamp>=q_ts_mostrecent.timestamp_mostrecent-3600
+                        -- First spatial filter round: does the cube contain the point (pre-filter that can be indexed)
+                        -- TODO: TO BE CHECKED
+                        -- AND earth_box(ll_to_earth(qq.latitude,qq.longitude),100) @> ll_to_earth(c.latitude,c.longitude)
+                        -- Final spatial filtering round, only has to consider all points in the box
+                        AND earth_distance(ll_to_earth(c.latitude,c.longitude),ll_to_earth(qq.latitude,qq.longitude))>=100
+                )
+                THEN 1 ELSE 0
+            END AS flag_in_motion
+        FROM qq
+        WHERE
+            -- be sure that there are not duplicate entries with identical combination of (deviceid;timestamp)
+            rn=1;
         """
     )
-    res_rows = cur.fetchall()
+    res_rows_complete = cur.fetchall()
+    if exclude_stationary:
+        res_rows_filt = list( filter(lambda d: d['flag_in_motion']==1, res_rows_complete) )
+    else:
+        res_rows_filt = res_rows_complete
+
+    # We want to structure returned data as data loaded from the JSON files. Remove any additional fields that came from the DB query.
+    keys_to_keep = ['device', 'latitude', 'longitude', 'timestamp']
+    res_rows = [
+        {k: d[k] for k in keys_to_keep}
+        for d in res_rows_filt
+    ]
     longitude = [_['longitude'] for _ in res_rows]
     latitude  = [_['latitude']  for _ in res_rows]
     X = np.vstack((np.array(latitude),np.array(longitude)))

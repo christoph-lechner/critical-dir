@@ -56,6 +56,15 @@ cfg = {
     'rho': 6371, # km, radius of Earth (in spherical approximation)
 }
 
+####################
+### DATA LOADERS ###
+####################
+def generate_input_for_clusteralgo(data):
+    latitude  = [_['latitude']  for _ in data]
+    longitude = [_['longitude'] for _ in data]
+    X = np.vstack((np.array(latitude),np.array(longitude)))
+    X = np.transpose(X)
+    return X
 
 
 def load_from_DB(*, exclude_stationary=True):
@@ -70,6 +79,8 @@ def load_from_DB(*, exclude_stationary=True):
     conn = get_db_conn()
     cur = conn.cursor(row_factory=dict_row)
 
+    # A device is considered stationary if it did not report in the previous hour a single position outside of a circle around its last known position
+    crit_stationary_radius = 100 # meters
     cur.execute(
         """
         WITH q_ts_mostrecent AS (
@@ -93,7 +104,7 @@ def load_from_DB(*, exclude_stationary=True):
                         -- TODO: TO BE CHECKED
                         -- AND earth_box(ll_to_earth(qq.latitude,qq.longitude),100) @> ll_to_earth(c.latitude,c.longitude)
                         -- Final spatial filtering round, only has to consider all points in the box
-                        AND earth_distance(ll_to_earth(c.latitude,c.longitude),ll_to_earth(qq.latitude,qq.longitude))>=100
+                        AND earth_distance(ll_to_earth(c.latitude,c.longitude),ll_to_earth(qq.latitude,qq.longitude))>=%s
                 )
                 THEN 1 ELSE 0
             END AS flag_in_motion
@@ -101,7 +112,8 @@ def load_from_DB(*, exclude_stationary=True):
         WHERE
             -- be sure that there are not duplicate entries with identical combination of (deviceid;timestamp)
             rn=1;
-        """
+        """,
+        (crit_stationary_radius,)
     )
     res_rows_complete = cur.fetchall()
     if exclude_stationary:
@@ -109,22 +121,15 @@ def load_from_DB(*, exclude_stationary=True):
     else:
         res_rows_filt = res_rows_complete
 
-    # We want to structure returned data as data loaded from the JSON files. Remove any additional fields that came from the DB query.
-    keys_to_keep = ['device', 'latitude', 'longitude', 'timestamp']
-    res_rows = [
-        {k: d[k] for k in keys_to_keep}
-        for d in res_rows_filt
-    ]
-    longitude = [_['longitude'] for _ in res_rows]
-    latitude  = [_['latitude']  for _ in res_rows]
-    X = np.vstack((np.array(latitude),np.array(longitude)))
-    X = np.transpose(X)
-
     # Structure returned from DB has same structure as data loaded from JSON files (containing text obtained from CriticalMaps API interface):
     # A list of dictionaries with the structure: {"device": "...", "latitude": float, "longitude": float, "timestamp": unix_epoch_value}
     # The only difference is that the latitude/longitude values have been scaled to usual (float) values, while the API returns int values (scaled up by a factor of 1E6)
-    data = res_rows
-    return data,X
+    keys_to_keep = ['device', 'latitude', 'longitude', 'timestamp']
+    data = [
+        {k: d[k] for k in keys_to_keep}
+        for d in res_rows_filt
+    ]
+    return data
 
 def load_clustertestdata():
     def make_datapoint(lat,long):
@@ -139,14 +144,16 @@ def load_clustertestdata():
             make_datapoint(0,5.005), # with rcluster=2km this one will be part of a cluster
             make_datapoint(0,4.98),  # with rcluster=2km this one will not be part of a cluster
     ]
-    longitude = [_['longitude'] for _ in data]
     latitude  = [_['latitude']  for _ in data]
+    longitude = [_['longitude'] for _ in data]
     X = np.vstack((np.array(latitude),np.array(longitude)))
     X = np.transpose(X)
 
     # Structure returned from DB has same structure as data loaded from JSON files (containing text obtained from CriticalMaps API interface):
     # A list of dictionaries with the structure: {"device": "...", "latitude": float, "longitude": float, "timestamp": unix_epoch_value}
-    return data,X
+    return data
+
+##############################
 
 def spatial_filter_HH(d):
     """
@@ -162,9 +169,12 @@ def spatial_filter_HH(d):
     is_in_bbox = (9.7<=longitude) and (longitude<=10.35) and (53.35<=latitude) and (latitude<=53.75)
     return is_in_bbox
 
-### based on code from https://scikit-learn.org/stable/auto_examples/cluster/plot_agglomerative_dendrogram.html#sphx-glr-auto-examples-cluster-plot-agglomerative-dendrogram-py
 def plot_dendrogram(hax, model, **kwargs):
-    # Create linkage matrix and then plot the dendrogram
+    """
+    Create linkage matrix and then plot the dendrogram
+
+    based on code from https://scikit-learn.org/stable/auto_examples/cluster/plot_agglomerative_dendrogram.html#sphx-glr-auto-examples-cluster-plot-agglomerative-dendrogram-py
+    """
 
     # create the counts of samples under each node
     counts = np.zeros(model.children_.shape[0])
@@ -402,9 +412,11 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
 
     if not (f_dataloader and callable(f_dataloader)):
         raise ValueError('expecting function')
-    data,X = f_dataloader()
+    data = f_dataloader()
     nriders = len(data)
     diag_info.append(f'Total number of currently active riders: {nriders} (also includes riders not in any local cluster)')
+
+    X = generate_input_for_clusteralgo(data)
 
     """
     Cluster and plot dendrogram
@@ -547,7 +559,7 @@ if __name__=='__main__':
         """
         print(f'loading data from file {datafile}')
         data,X = load_cmap_jsonfile(datafile, spatial_filter=spatial_filter, cb_diag_file_age=cb_age)
-        return data,X
+        return data
 
     # hard-coded test data for clustering algorithm
     # r = main(f_dataloader=load_clustertestdata, observer_pos=my_pos, exclude_isolated_points=False)

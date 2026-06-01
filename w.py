@@ -443,6 +443,8 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
     # -> May not be needed, because AgglomerativeClustering supports metric='haversine' out-of-the-box.
     #    But keeping it because it helps to understand what the cluster algorithm did
     #####
+    if len(data)<2:
+        raise ValueError(f'Clustering requires at least 2 data points, got {len(data)}') # FIXME: implement better solution that also sends the info what happened to the Web/API User
     X = generate_input_for_clusteralgo(data)
     # for the clustering algorithm, we need long/lat in radians
     Xrad = np.radians(X)

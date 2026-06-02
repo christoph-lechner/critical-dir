@@ -110,13 +110,20 @@ class DataLoader(ABC):
         return False
 
 class DataLoaderDB(DataLoader):
-    def __init__(self, *, f_factory_DBconn: callable):
+    def __init__(self, *, f_factory_DBconn: callable, t0: int=None):
         if not callable(f_factory_DBconn):
             raise ValueError('expecting function as argument')
         self.f_factory_DBconn = f_factory_DBconn
 
+        self.supports_tracepersistence = True
+        self.t0 = None
+        if t0:
+            self.supports_tracepersistence = False
+            self.t0 = t0
+
+
     def has_data_for_tracepersistence(self) -> bool:
-        return True
+        return (self.supports_tracepersistence) # no trace persistence for "wayback machine mode"
 
     def get_data(self, *, return_all_fields=True) -> list[dict]:
         """
@@ -132,30 +139,50 @@ class DataLoaderDB(DataLoader):
 
         # A device is considered stationary if it did not report in the previous hour a single position outside of a circle around its last known position
         crit_stationary_radius = 100 # meters
+
+        # standard operation, temporal cutoff defined by most recent timestamp in database
+        subquery_cutoff = 'SELECT MAX(timestamp) AS timestamp_mostrecent FROM criticalmaps_data'
+        if self.t0:
+            # special operation mode to look back at historic data
+            subquery_cutoff = f'SELECT {self.t0} AS timestamp_mostrecent'
+
+        query_params = {
+            'rho_min': crit_stationary_radius,
+        }
         cur.execute(
-            """
-            WITH q_ts_mostrecent AS (
-                SELECT MAX(timestamp) AS timestamp_mostrecent FROM criticalmaps_data
+            f"""
+            WITH q_ts_cutoff AS (
+                -- SELECT MAX(timestamp) AS timestamp_mostrecent FROM criticalmaps_data
+                -- SELECT 1780239180 AS timestamp_mostrecent
+                { subquery_cutoff }
             ), qq AS (
                 SELECT
                     c.deviceid,c.latitude,c.longitude,c.timestamp, ROW_NUMBER() OVER (PARTITION BY c.deviceid ORDER BY c.timestamp DESC) AS rn
-                FROM criticalmaps_data AS c, q_ts_mostrecent
-                WHERE timestamp>=q_ts_mostrecent.timestamp_mostrecent-150
+                FROM criticalmaps_data AS c, q_ts_cutoff
+                WHERE
+                    c.timestamp>=q_ts_cutoff.timestamp_mostrecent-150
+                    -- this condition only has an effect if we obtain data from the past
+                    AND q_ts_cutoff.timestamp_mostrecent>=c.timestamp
             )
             SELECT
                 deviceid AS device, latitude, longitude, timestamp,
                 CASE
                     WHEN EXISTS (
                         SELECT 1
-                        FROM criticalmaps_data AS c, q_ts_mostrecent
-                        WHERE c.deviceid=qq.deviceid
+                        FROM criticalmaps_data AS c, q_ts_cutoff
+                        WHERE
+                            c.deviceid=qq.deviceid
+                            --
                             -- consider only recent history for checking if there were any movements
-                            AND c.timestamp>=q_ts_mostrecent.timestamp_mostrecent-3600
+                            AND c.timestamp>=q_ts_cutoff.timestamp_mostrecent-3600
+                            -- this condition only has an effect if we obtain data from the past
+                            AND q_ts_cutoff.timestamp_mostrecent>=c.timestamp
+                            --
                             -- First spatial filter round: does the cube contain the point (pre-filter that can be indexed)
                             -- TODO: TO BE CHECKED
                             -- AND earth_box(ll_to_earth(qq.latitude,qq.longitude),100) @> ll_to_earth(c.latitude,c.longitude)
                             -- Final spatial filtering round, only has to consider all points in the box
-                            AND earth_distance(ll_to_earth(c.latitude,c.longitude),ll_to_earth(qq.latitude,qq.longitude))>=%s
+                            AND earth_distance(ll_to_earth(c.latitude,c.longitude),ll_to_earth(qq.latitude,qq.longitude))>=%(rho_min)s
                     )
                     THEN 1 ELSE 0
                 END AS flag_in_motion
@@ -164,7 +191,7 @@ class DataLoaderDB(DataLoader):
                 -- be sure that there are not duplicate entries with identical combination of (deviceid;timestamp)
                 rn=1;
             """,
-            (crit_stationary_radius,)
+            query_params
         )
         res_rows_complete = cur.fetchall()
         if return_all_fields:
@@ -333,7 +360,7 @@ class MyAnalyzer:
         """
         Now the dataset is divided into clusters -> analyze them.
         """
-        # Note: points that have no neighbor within the distance threshould count as single-element cluster with their own ID
+        # Note: points that have no neighbor within the distance threshold count as single-element cluster with their own ID
         counts_cluster_labels = Counter(cluster_labels)
         counts_cluster_labels = sorted(counts_cluster_labels.items(), key=lambda _: _[1], reverse=True)
         # print(counts_cluster_labels)
@@ -732,9 +759,14 @@ if __name__=='__main__':
     # r = main(f_dataloader=partial(dataloader_file, datafile='cmdata/data_20260528T100900_002729.json'), observer_pos=my_pos, exclude_isolated_points=False)
 
     # default loader is DB loader
-    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
+    # my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=1780239180) # Sun., 31.05.2026, 16:53
+    # my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=1780080600) # Fri., 29.05.2026, 20:50
+    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=1780076700) # Fri., 29.05.2026, 19:45
     my_a = MyAnalyzer(dl=my_dl)
-    res = my_a.perform_analysis(observer_pos=my_pos, ag = AlgoConfig(exclude_isolated_points = False))
+    res = my_a.perform_analysis(
+        observer_pos=my_pos,
+        ag = AlgoConfig(exclude_isolated_points = True, cluster_dist_thres=0.3)
+    )
     print(res)
     my_p = MyPlotter(dl=my_dl)
     my_p.doit(res=res)

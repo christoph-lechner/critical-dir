@@ -19,6 +19,9 @@ class ClustersResponseItem(BaseModel):
     center_latitude: float
     center_longitude: float
     N: int
+class ClustersResponse(BaseModel):
+    info: str
+    clusters: list[ClustersResponseItem]
 
 class LocationRequest(BaseModel):
     latitude: float
@@ -152,7 +155,7 @@ def location_worker(user_pos, *, ag):
         'diag': diag_info
     }
 
-@app.get('/clusters', response_model=list[ClustersResponseItem])
+@app.get('/clusters', response_model=ClustersResponse)
 def get_clusters():
     # for the demo, some hard-coded defaults
     ag = AlgoConfig(
@@ -161,8 +164,14 @@ def get_clusters():
         cluster_dist_thres=1.0,
         device_trace_persistence=900
     )
-    cluster_infos=clusters_worker(ag=ag)
-    return cluster_infos
+    clusters=clusters_worker(ag=ag)
+    r = {
+        'info': 'parameters_for_the_cluster_analysis_go_here',
+        'clusters': clusters
+    }
+    # TODO: Ideas what should also be part of the response:
+    # lat/long of all cluster members (maybe also their device IDs?)
+    return r
 
 
 @app.post('/location_demo', response_model=LocationResponse)

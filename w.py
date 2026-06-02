@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
+import matplotlib
 # for FastAPI servers use at least backend 'Agg' (! matplotlib.pyplot is not thread-safe, see https://matplotlib.org/stable/users/faq.html#work-with-threads !)
 # ... and don't use 'plt'.
-#import matplotlib
 #matplotlib.use('Agg')
 from matplotlib.figure import Figure
 
@@ -36,32 +36,49 @@ class ClusterInfo:
     N: int
     course: float
     dist: float
+    marker_color_html: str
     def __str__(self):
         return f"ID={self.cluster_ID}: N={self.N}, center={self.latitude}, {self.longitude}, course={self.course} deg, dist={self.dist}"
     def table_header(self):
         # part of dervied dataclass to ensure that header and string representation of rows have matching layout
-        return '<tr><td>(ID)</td><td>N</td><td>center</td><td>course [deg]</td><td>dist [km]</td></tr>'
+        return '<tr><td>(ID)</td><td>N</td><td>center</td><td>course [deg]</td><td>dist [km]</td><td><!-- for inspect link --></td></tr>'
     def as_html(self):
         # replace by jinja template?
-        return f"<tr><td>{self.cluster_ID}</td><td>{self.N}</td><td>{self.latitude:.2f}, {self.longitude:.2f}</td><td>{self.course:.2f}</td><td>{self.dist:.2f}</td></tr>"
+        return f"<tr><td style=\"background-color: {self.marker_color_html}\">{self.cluster_ID}</td><td>{self.N}</td><td>{self.latitude:.2f}, {self.longitude:.2f}</td><td>{self.course:.2f}</td><td>{self.dist:.2f}</td><td><a href=\"api/inspect?clat={self.latitude:.6f}&clong={self.longitude:.6f}\" target=\"_blank\">Inspect</a></td></tr>"
+
+@dataclass
+class AlgoConfig:
+    exclude_isolated_points: bool    = True
+    exclude_stationary_devices: bool = True
+    cluster_dist_thres: float        = 2    # km
+    device_trace_persistence: float  = 900  # seconds
 
 
 cfg = {
     'warn_file_age': 120, # seconds
-    'r_thres': 2, # km, radius used for clustering (note: converted to great-circle angle using radius of Earth)
+    # 'r_thres': 2, # km, radius used for clustering (note: converted to great-circle angle using radius of Earth)
 
     'max_clusters': 1000,
     ### constants ###
     'rho': 6371, # km, radius of Earth (in spherical approximation)
 }
 
+####################
+### DATA LOADERS ###
+####################
+def generate_input_for_clusteralgo(data):
+    latitude  = [_['latitude']  for _ in data]
+    longitude = [_['longitude'] for _ in data]
+    X = np.vstack((np.array(latitude),np.array(longitude)))
+    X = np.transpose(X)
+    return X
 
 
-def load_from_DB():
+def load_from_DB(return_all_fields=True):
     """
     First implementation to retrieve most recent coordinates seen for every device.
-    Uses temporal cut-off. If cut-off time is different from that used by API server (sending JSON data files), the data points in the dataset will be different as well -- for instance if a mobile device starts/ceases sending data.
-    Currently emulates data structure returned by JSON loading function.
+    Uses temporal cut-off. If cut-off time is different from that used by CriticalMaps API server (source of the used data), the data points in the dataset will be different as well -- for instance if a device starts/ceases sending data.
+    return_all_fields=False: emulate data structure returned by JSON loading function.
     """
     # print('loading current positions from DB')
     # establish DB connection
@@ -69,31 +86,55 @@ def load_from_DB():
     conn = get_db_conn()
     cur = conn.cursor(row_factory=dict_row)
 
+    # A device is considered stationary if it did not report in the previous hour a single position outside of a circle around its last known position
+    crit_stationary_radius = 100 # meters
     cur.execute(
         """
-        WITH qq AS (
-            WITH q_ts_mostrecent AS (
-                SELECT MAX(timestamp) AS timestamp_mostrecent FROM criticalmaps_data
-            )
+        WITH q_ts_mostrecent AS (
+            SELECT MAX(timestamp) AS timestamp_mostrecent FROM criticalmaps_data
+        ), qq AS (
             SELECT
-                c.deviceid,c.longitude,c.latitude,c.timestamp, ROW_NUMBER() OVER (PARTITION BY c.deviceid ORDER BY c.timestamp DESC) AS rn
+                c.deviceid,c.latitude,c.longitude,c.timestamp, ROW_NUMBER() OVER (PARTITION BY c.deviceid ORDER BY c.timestamp DESC) AS rn
             FROM criticalmaps_data AS c, q_ts_mostrecent
             WHERE timestamp>=q_ts_mostrecent.timestamp_mostrecent-150
         )
-        SELECT deviceid AS device, longitude, latitude, timestamp FROM qq WHERE rn=1;
-        """
+        SELECT
+            deviceid AS device, latitude, longitude, timestamp,
+            CASE
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM criticalmaps_data AS c, q_ts_mostrecent
+                    WHERE c.deviceid=qq.deviceid
+                        -- consider only recent history for checking if there were any movements
+                        AND c.timestamp>=q_ts_mostrecent.timestamp_mostrecent-3600
+                        -- First spatial filter round: does the cube contain the point (pre-filter that can be indexed)
+                        -- TODO: TO BE CHECKED
+                        -- AND earth_box(ll_to_earth(qq.latitude,qq.longitude),100) @> ll_to_earth(c.latitude,c.longitude)
+                        -- Final spatial filtering round, only has to consider all points in the box
+                        AND earth_distance(ll_to_earth(c.latitude,c.longitude),ll_to_earth(qq.latitude,qq.longitude))>=%s
+                )
+                THEN 1 ELSE 0
+            END AS flag_in_motion
+        FROM qq
+        WHERE
+            -- be sure that there are not duplicate entries with identical combination of (deviceid;timestamp)
+            rn=1;
+        """,
+        (crit_stationary_radius,)
     )
-    res_rows = cur.fetchall()
-    longitude = [_['longitude'] for _ in res_rows]
-    latitude  = [_['latitude']  for _ in res_rows]
-    X = np.vstack((np.array(latitude),np.array(longitude)))
-    X = np.transpose(X)
+    res_rows_complete = cur.fetchall()
+    if return_all_fields:
+        return res_rows_complete
 
     # Structure returned from DB has same structure as data loaded from JSON files (containing text obtained from CriticalMaps API interface):
     # A list of dictionaries with the structure: {"device": "...", "latitude": float, "longitude": float, "timestamp": unix_epoch_value}
     # The only difference is that the latitude/longitude values have been scaled to usual (float) values, while the API returns int values (scaled up by a factor of 1E6)
-    data = res_rows
-    return data,X
+    keys_to_keep = ['device', 'latitude', 'longitude', 'timestamp']
+    data = [
+        {k: d[k] for k in keys_to_keep}
+        for d in res_rows_filt
+    ]
+    return data
 
 def load_clustertestdata():
     def make_datapoint(lat,long):
@@ -108,14 +149,16 @@ def load_clustertestdata():
             make_datapoint(0,5.005), # with rcluster=2km this one will be part of a cluster
             make_datapoint(0,4.98),  # with rcluster=2km this one will not be part of a cluster
     ]
-    longitude = [_['longitude'] for _ in data]
     latitude  = [_['latitude']  for _ in data]
+    longitude = [_['longitude'] for _ in data]
     X = np.vstack((np.array(latitude),np.array(longitude)))
     X = np.transpose(X)
 
     # Structure returned from DB has same structure as data loaded from JSON files (containing text obtained from CriticalMaps API interface):
     # A list of dictionaries with the structure: {"device": "...", "latitude": float, "longitude": float, "timestamp": unix_epoch_value}
-    return data,X
+    return data
+
+##############################
 
 def spatial_filter_HH(d):
     """
@@ -131,9 +174,12 @@ def spatial_filter_HH(d):
     is_in_bbox = (9.7<=longitude) and (longitude<=10.35) and (53.35<=latitude) and (latitude<=53.75)
     return is_in_bbox
 
-### based on code from https://scikit-learn.org/stable/auto_examples/cluster/plot_agglomerative_dendrogram.html#sphx-glr-auto-examples-cluster-plot-agglomerative-dendrogram-py
 def plot_dendrogram(hax, model, **kwargs):
-    # Create linkage matrix and then plot the dendrogram
+    """
+    Create linkage matrix and then plot the dendrogram
+
+    based on code from https://scikit-learn.org/stable/auto_examples/cluster/plot_agglomerative_dendrogram.html#sphx-glr-auto-examples-cluster-plot-agglomerative-dendrogram-py
+    """
 
     # create the counts of samples under each node
     counts = np.zeros(model.children_.shape[0])
@@ -258,33 +304,27 @@ def cluster_plot_persistence(*, hax, cluster_complete_data, cluster_labels, id_c
         curr_devid = cluster_complete_data[p]['device']
         timecutoff_epoch = time.time() - trace_persistence
         plot_device_trace(cur=cur, hax=hax, deviceid=curr_devid, timestamp_min=timecutoff_epoch, kwargs=kwargs)
-        
 
-def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None, exclude_isolated_points=True, cluster_dist_thres=None, cluster_trace_persistence=900):
+
+def inspect_generate_img(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None, ag: AlgoConfig):
     """
     f_dataloader: Function that is called (without any arguments) to load the data to be processed, expected to return two objects: data,X. 'data' is the data formatted as in the JSON file, X is the matrix containing geodata for clustering process.
     obj_path: If provided, this switches on storing images to files instead of displaying them
     """
-
-    ### HERE WE COLLECT INFOS TO BE RETURNED TO CALLER (= the client via the API server) ###
-    diag_info = []
-    cluster_infos = []
-    fn = {}
-
-    # caller can override value of distance threshold for clustering process
-    if cluster_dist_thres:
-        cfg['r_thres'] = cluster_dist_thres
+    # REMARK: function is based on modified copy of main plotting function
 
     # fprefix should be unique to this session
     if fprefix is None:
         fprefix = 'img_123_'
 
-    def plot_new():
+    def plot_new(subplot_kwargs={}):
+        # Remark: plt.subplots and fig.add_subplot use different parameter to pass on kwargs for subplot
+        # (initially this was implemented to generate polar plot)
         if not obj_path:
-            fig,hax = plt.subplots(1)
+            fig,hax = plt.subplots(1, subplot_kw=subplot_kwargs)
         else:
             fig = Figure()
-            hax = fig.add_subplot(111)
+            hax = fig.add_subplot(111, **subplot_kwargs)
         return fig,hax
 
     def plot_show_or_save(fig, ftype):
@@ -300,7 +340,98 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
 
     if not (f_dataloader and callable(f_dataloader)):
         raise ValueError('expecting function')
-    data,X = f_dataloader()
+    data = f_dataloader()
+    X = generate_input_for_clusteralgo(data)
+
+    # establish DB connection
+    # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
+    conn = get_db_conn()
+    cur = conn.cursor(row_factory=dict_row)
+
+    # Plotting remark: for correct z stacking: plot persistence traces first (would be better to plot *all* persistence traces first, then all current positions)
+    fig,hax = plot_new()
+    # plot persistence (FIXME: no need to loop over all devices currently visible world-wide, just process local ones)
+    for q in data:
+        curr_devid = q['device']
+        timecutoff_epoch = time.time() - ag.device_trace_persistence
+        plot_device_trace(cur=cur, hax=hax, deviceid=curr_devid, timestamp_min=timecutoff_epoch, kwargs={'color':'b', 'alpha':0.5})
+    hax.plot(X[:,1],X[:,0], 'bo', label='rider positions')
+    hax.plot(observer_pos[1], observer_pos[0], 'kx', label='center')
+    #
+    # plot finalization
+    # (has to be done for ALL plots before call to 'plot_show_or_save')
+    hax.set_xlabel('longitude')
+    hax.set_ylabel('latitude')
+    # define range (TODO: this is only a very first implementation, it needs to be refined to always show approx +/- 3km of the local "map", independent of latitude)
+    drange = 0.03 # for longitude on the equator: approx 3km
+    hax.set_xlim(observer_pos[1]-drange,observer_pos[1]+drange)
+    hax.set_ylim(observer_pos[0]-drange,observer_pos[0]+drange)
+    fig.legend()
+    #
+    # Store plot
+    #
+    fn = {}
+    my_file_key = 'inspect'
+    fn[my_file_key] = plot_show_or_save(fig, my_file_key)
+
+    return {'files':fn}
+
+def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None, ag: AlgoConfig):
+    """
+    f_dataloader: Function that is called (without any arguments) to load the data to be processed, expected to return two objects: data,X. 'data' is the data formatted as in the JSON file, X is the matrix containing geodata for clustering process.
+    obj_path: If provided, this switches on storing images to files instead of displaying them
+    """
+
+    ### HERE WE COLLECT INFOS TO BE RETURNED TO CALLER (= the client via the API server) ###
+    diag_info = []
+    cluster_infos = []
+    fn = {}
+
+    # fprefix should be unique to this session
+    if fprefix is None:
+        fprefix = 'img_123_'
+
+    def plot_new(subplot_kwargs={}):
+        # Remark: plt.subplots and fig.add_subplot use different parameter to pass on kwargs for subplot
+        # (initially this was implemented to generate polar plot)
+        if not obj_path:
+            fig,hax = plt.subplots(1, subplot_kw=subplot_kwargs)
+        else:
+            fig = Figure()
+            hax = fig.add_subplot(111, **subplot_kwargs)
+        return fig,hax
+
+    def plot_show_or_save(fig, ftype):
+        if not (obj_path and isinstance(obj_path,Path)):
+            plt.show()
+            return
+        rel_path = (fprefix+ftype+'.png')
+        absolute_path = obj_path / rel_path
+        fig.savefig(absolute_path, dpi=150, bbox_inches='tight')
+        plt.close(fig) # frees resources
+        # returning the relative path since the webclient sees a different path layout than the server
+        return rel_path
+
+    if not (f_dataloader and callable(f_dataloader)):
+        raise ValueError('expecting function')
+    # Note: nomenclature: "complete" means all fields returned from the loader function. If DB is used as data source, additional information may be provided
+    data_complete = f_dataloader()
+    data_complete_moving = list( filter(lambda d: d['flag_in_motion']==1, data_complete) )
+    ndev_tot = len(data_complete)
+    ndev_moving = len(data_complete_moving)
+    diag_info.append(
+        f"""
+        Breakdown of data:
+        Total number of devices: {ndev_tot};
+        Number of moving devices: {ndev_moving}
+        """
+    )
+
+    # Determine what data will be used for cluster analysis
+    if ag.exclude_stationary_devices:
+        data = data_complete_moving
+    else:
+        data = data_complete
 
     """
     Cluster and plot dendrogram
@@ -312,6 +443,9 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
     # -> May not be needed, because AgglomerativeClustering supports metric='haversine' out-of-the-box.
     #    But keeping it because it helps to understand what the cluster algorithm did
     #####
+    if len(data)<2:
+        raise ValueError(f'Clustering requires at least 2 data points, got {len(data)}') # FIXME: implement better solution that also sends the info what happened to the Web/API User
+    X = generate_input_for_clusteralgo(data)
     # for the clustering algorithm, we need long/lat in radians
     Xrad = np.radians(X)
 
@@ -324,7 +458,7 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
     ### TODO: understand what the default linkage 'ward' does
 
     # setting distance_threshold=0 ensures we compute the full tree.
-    mu_thres = cfg['r_thres']/cfg['rho']
+    mu_thres = ag.cluster_dist_thres/cfg['rho']
     model = AgglomerativeClustering(metric='haversine', linkage='single', distance_threshold=mu_thres, n_clusters=None)
     cluster_labels = model.fit_predict(Xrad)
     # print(cluster_labels)
@@ -333,7 +467,7 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
     fig,hax = plot_new()
     hax.set_title("Hierarchical Clustering Dendrogram")
     # plot the top three levels of the dendrogram
-    plot_dendrogram(hax, model, truncate_mode="level", p=7, color_threshold=cfg['r_thres'])
+    plot_dendrogram(hax, model, truncate_mode="level", p=7, color_threshold=ag.cluster_dist_thres)
     hax.set_xlabel("number of points in node (or index of point if no parenthesis)")
     hax.set_ylabel("distance [km]")
     hax.set_ylim(0.1, 3.5*cfg['rho']) # maximum length of great circle is pi*radius
@@ -341,8 +475,7 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
     fn['dendrogram'] = plot_show_or_save(fig, 'dendrogram')
 
 
-
-    # points that have no neighbor within the distance threshould count as single-element cluster with their own ID
+    # Note: points that have no neighbor within the distance threshould count as single-element cluster with their own ID
     counts_cluster_labels = Counter(cluster_labels)
     counts_cluster_labels = sorted(counts_cluster_labels.items(), key=lambda _: _[1], reverse=True)
     # print(counts_cluster_labels)
@@ -354,35 +487,74 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
 
     def geoplot_cluster_analysis(*, only_local=False, store_ci=True):
         from itertools import cycle
-        iter_colors = cycle(['b','r','g'])
+        # Colors we use to indicate cluster points.
+        # These are the matplotlib default colors except gray, https://matplotlib.org/stable/gallery/color/color_cycle_default.html
+        # Gray is used to indicate city limits, devices that are not considered for cluster analysis because they are stationary, etc.
+        iter_colors = cycle(['blue','orange','green','red','purple','brown','pink','olive','cyan'])
         cluster_counter=0
 
         fig,hax = plot_new()
+        # fig_p,hax_p = plot_new({'subplot_kw':{'projection':'polar'}})
+        fig_p,hax_p = plot_new({'projection':'polar'})
+        hax_p.set_rscale('log')
+
+        # for correct z-stacking: plot city limits and all known devices first
         if only_local:
             plot_city(hax)
-        hax.plot(observer_pos[1], observer_pos[0], 'kx', label='your position')
+        if ag.exclude_stationary_devices:
+            data_complete_stationary = list( filter(lambda d: d['flag_in_motion']==0, data_complete) )
+            Xtmp = generate_input_for_clusteralgo(data_complete_stationary)
+            hax.plot(Xtmp[:,1], Xtmp[:,0], '+', color='gray', label='stationary devices')
+        if ag.exclude_isolated_points:
+            # List IDs of single-element clusters
+            # (key is cluster ID, value is number of elements)
+            single_element_cluster_labels = []
+            for cluster_label,cluster_nene in counts_cluster_labels:
+                if cluster_nene==1:
+                    single_element_cluster_labels.append(int(cluster_label)) # cast to get rid of np.int64
+            # Translate collected cluster labels in indices into data matrix
+            idx_datapoints_single_element_clusters = []
+            for qqq in single_element_cluster_labels:
+                idx_datapoints_single_element_clusters.append(
+                    [_ for _,x in enumerate(cluster_labels) if x==qqq]
+                )
+            # FIXME: here we have a nested "list of lists" -> generate single-level list
+            from itertools import chain
+            idx_datapoints_single_element_clusters = list(chain.from_iterable(idx_datapoints_single_element_clusters))
+
+            Xtmp = generate_input_for_clusteralgo(data)
+            Xtmp_SEclusters = Xtmp[idx_datapoints_single_element_clusters,:]
+            hax.plot(Xtmp_SEclusters[:,1], Xtmp_SEclusters[:,0], 'o', color='gray', markerfacecolor='none', label='single-element "clusters"')
+
         for id_cluster in sorted_cluster_ids:
             # if requested by user, ignore single-element 'clusters'
             curr_cluster_nele = dict(counts_cluster_labels)[id_cluster]
-            if exclude_isolated_points and curr_cluster_nele<=1:
+            if ag.exclude_isolated_points and curr_cluster_nele<=1:
                 continue
             #
             # for correct z stacking: plot persistence traces first (would be better to plot *all* persistence traces first, then all current positions)
             curr_color = next(iter_colors)
             if f_dataloader==load_from_DB:
                 # trace persistence currently only for data coming from SQL DB
-                cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, trace_persistence=cluster_trace_persistence, kwargs={'color':curr_color, 'alpha':0.5})
+                cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, trace_persistence=ag.device_trace_persistence, kwargs={'color':curr_color, 'alpha':0.5})
             curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':curr_color})
             initial_course,dist_rad = get_nav(observer_pos, curr_cluster_center)
+            dist_km = cfg['rho']*dist_rad
+            dist_km_saturated = np.maximum(0.1, np.minimum(dist_km, 100)) # elementwise saturation (large values are capped; for small values some radius_minimum is displayed)
+            hax_p.plot(np.deg2rad(initial_course),dist_km_saturated, 'o',color=curr_color)
             #
             if store_ci:
-                curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, latitude=curr_cluster_center[0], longitude=curr_cluster_center[1], course=initial_course, dist=cfg['rho']*dist_rad)
+                curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, latitude=curr_cluster_center[0], longitude=curr_cluster_center[1], course=initial_course, dist=dist_km, marker_color_html=matplotlib.colors.to_hex(curr_color))
                 cluster_infos.append(curr_ci)
                 print(curr_ci)
             #
             cluster_counter+=1
             if cluster_counter>=cfg['max_clusters']:
                 break
+        #
+        # plot finalization #1
+        # (has to be done for ALL plots before call to 'plot_show_or_save')
+        hax.plot(observer_pos[1], observer_pos[0], 'kx', label='your position')
         hax.set_xlabel('longitude')
         hax.set_ylabel('latitude')
         hax.set_title('Result of Clustering Analysis')
@@ -391,10 +563,26 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
             hax.set_ylim(53.35, 53.75)
         fig.legend()
         #
+        # plot finalization #2 (polar plot)
+        hax_p.set_title(f'Result of Clustering Analysis (Origin at ({observer_pos[0]:.3f},{observer_pos[1]:.3f}))')
+        hax_p.set_rlim(3e-2, 3e2) # range of radius axis is larger than what is actually used (see elementwise saturation code above): this prevents clipping of the marker on the edges of the coordinate system
+        rticks=[0.1, 1, 10, 100]
+        hax_p.yaxis.set_major_locator(matplotlib.ticker.FixedLocator(rticks))
+        hax_p.set_yticklabels([str(t) for t in rticks])
+        hax_p.set_thetagrids([0,90,180,270], ['N (Geographic North)','E','S','W']) # labeling of cardinal directions, labeling N as "Geographic North" to remember user that this is *not* the pointing of the mobile device
+        # follow compass conventions
+        hax_p.set_theta_zero_location('N')
+        hax_p.set_theta_direction(-1)
+        #
+        # Store plots
+        #
         my_file_key = 'clusters'
         if only_local:
             my_file_key = 'clusters_local'
         fn[my_file_key] = plot_show_or_save(fig, my_file_key)
+        if not only_local:
+            # for polar plot, local plot looks the same (currently only difference for standard plot would be adjustment of coordinate limits and plot of city geographics)
+            fn[my_file_key+'_polar'] = plot_show_or_save(fig_p, my_file_key+'_polar')
 
     geoplot_cluster_analysis(only_local=False)
     geoplot_cluster_analysis(only_local=True, store_ci=False)
@@ -418,7 +606,7 @@ if __name__=='__main__':
         """
         print(f'loading data from file {datafile}')
         data,X = load_cmap_jsonfile(datafile, spatial_filter=spatial_filter, cb_diag_file_age=cb_age)
-        return data,X
+        return data
 
     # hard-coded test data for clustering algorithm
     # r = main(f_dataloader=load_clustertestdata, observer_pos=my_pos, exclude_isolated_points=False)
@@ -427,4 +615,4 @@ if __name__=='__main__':
     # r = main(f_dataloader=partial(dataloader_file, datafile='cmdata/data_20260528T100900_002729.json'), observer_pos=my_pos, exclude_isolated_points=False)
 
     # default loader is DB loader
-    r = main(observer_pos=my_pos, exclude_isolated_points=False)
+    r = main(observer_pos=my_pos, ag = AlgoConfig(exclude_isolated_points = False))

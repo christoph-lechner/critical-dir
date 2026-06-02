@@ -11,7 +11,7 @@ import numpy as np
 from pathlib import Path
 import datetime
 
-from w import main
+from w import AlgoConfig,main,inspect_generate_img
 
 class LocationRequest(BaseModel):
     latitude: float
@@ -19,6 +19,7 @@ class LocationRequest(BaseModel):
     accuracy: float
     timestamp: int
     cfg_flag_iso: bool
+    cfg_flag_exclude_stationary: bool
     cfg_cluster_dist: float = 2   # km
     cfg_tpersistence: float = 900 # seconds
 
@@ -40,10 +41,11 @@ async def req_catch_all(request: Request):
     return HTMLResponse(content=html)
 
 
+###############################################################################################
+### /location is the main workhorse, requests from WebApp for data on overview page go here ###
+###############################################################################################
 
-
-
-def location_worker(user_pos, *, flag_iso=True, cfg_cluster_dist, cfg_tpersistence):
+def location_worker(user_pos, *, ag):
     # store timestamp
     tic = datetime.datetime.now()
 
@@ -53,9 +55,10 @@ def location_worker(user_pos, *, flag_iso=True, cfg_cluster_dist, cfg_tpersisten
 
     # no datafile given --> use DB for current positions
     r = main(
-            observer_pos=user_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix,
-            exclude_isolated_points=flag_iso, cluster_dist_thres=cfg_cluster_dist, cluster_trace_persistence=cfg_tpersistence
+            observer_pos=user_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix, ag=ag
+            # exclude_isolated_points=flag_iso, cluster_dist_thres=cfg_cluster_dist, cluster_trace_persistence=cfg_tpersistence
     )
+
 
     diag_info = '<h3>Diag Infos</h3>'
     diag_info += f'Server time: {tstr}<br>'
@@ -89,7 +92,7 @@ def location_worker(user_pos, *, flag_iso=True, cfg_cluster_dist, cfg_tpersisten
     html_info += ci_as_table(ci)
 
     # Keys of images to present FIRST (in this order)
-    top_files = ['clusters_local','clusters']
+    top_files = ['clusters_polar','clusters_local','clusters']
 
     html_imgs = ""
     print(r['files'])
@@ -120,8 +123,6 @@ def location_worker(user_pos, *, flag_iso=True, cfg_cluster_dist, cfg_tpersisten
         'diag': diag_info
     }
 
-
-
 @app.post('/location_demo', response_model=LocationResponse)
 @app.get('/location_demo', response_model=LocationResponse)
 def update_location_demo():
@@ -131,7 +132,13 @@ def update_location_demo():
     """
     # fixed dummy position in Hamburg for dev/demo
     user_pos = np.array([53.55, 10.0])
-    return location_worker(user_pos, flag_iso=payload.cfg_flag_iso, cfg_cluster_dist=payload.cfg_cluster_dist, cfg_tpersistence=payload.cfg_tpersistence)
+    ag = AlgoConfig(
+        exclude_isolated_points=payload.cfg_flag_iso,
+        exclude_stationary_devices=payload.cfg_flag_exclude_stationary, 
+        cluster_dist_thres=payload.cfg_cluster_dist,
+        device_trace_persistence=payload.cfg_tpersistence
+    )
+    return location_worker(user_pos, ag=ag)
 
 @app.post('/location', response_model=LocationResponse)
 def update_location(payload: LocationRequest):
@@ -139,7 +146,30 @@ def update_location(payload: LocationRequest):
     Implements location API endpoint
     """
     user_pos = np.array([payload.latitude, payload.longitude])
-    return location_worker(user_pos, flag_iso=payload.cfg_flag_iso, cfg_cluster_dist=payload.cfg_cluster_dist, cfg_tpersistence=payload.cfg_tpersistence)
+    ag = AlgoConfig(
+        exclude_isolated_points=payload.cfg_flag_iso,
+        exclude_stationary_devices=payload.cfg_flag_exclude_stationary, 
+        cluster_dist_thres=payload.cfg_cluster_dist,
+        device_trace_persistence=payload.cfg_tpersistence
+    )
+    return location_worker(user_pos, ag=ag)
+
+
+def inspect_worker(lat: float, long: float) -> str:
+    return 'hallo'
+
+@app.get('/inspect', response_class=HTMLResponse)
+async def inspect(clat: float, clong: float):
+    # generate "unique" prefix for image files
+    tnow = datetime.datetime.now()
+    tstr = tnow.strftime('%Y%m%dT%H%M%S.%f')
+    fprefix = f'img_{tstr}_'
+    fn_img = inspect_worker(lat=clat, long=clong)
+    r = inspect_generate_img(observer_pos=[clat,clong], obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix, ag=AlgoConfig())
+    fn_img = r['files']['inspect']
+    html = f"<html><body><a href=/myapp/>For iPhone PWA: Back</a><p>Inspecting local distribution of riders around {clat:.4f},{clong:.4f}. Note that this plot does not indicate cluster infos, so all positions are indicated with same marker color.<img src=\"objs/{fn_img}\"></body></html>"
+    return HTMLResponse(content=html)
+
 
 
 if __name__=="__main__":

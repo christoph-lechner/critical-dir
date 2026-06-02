@@ -86,7 +86,6 @@ cfg = {
     'warn_file_age': 120, # seconds
     # 'r_thres': 2, # km, radius used for clustering (note: converted to great-circle angle using radius of Earth)
 
-    'max_clusters': 1000,
     ### constants ###
     'rho': 6371, # km, radius of Earth (in spherical approximation)
 }
@@ -349,7 +348,6 @@ class MyAnalyzer:
         # These are the matplotlib default colors except gray, https://matplotlib.org/stable/gallery/color/color_cycle_default.html
         # Gray is used to indicate city limits, devices that are not considered for cluster analysis because they are stationary, etc.
         iter_colors = cycle(['blue','orange','green','red','purple','brown','pink','olive','cyan'])
-        cluster_counter=0
         for id_cluster in sorted_cluster_ids:
             # if requested by user, ignore single-element 'clusters'
             curr_cluster_nele = dict(counts_cluster_labels)[id_cluster]
@@ -436,19 +434,6 @@ class MyPlotter:
         plt.close(fig) # frees resources
         # returning the relative path since the webclient sees a different path layout than the server
         return rel_path
-
-    def plot_city(self, hax):
-        """
-        Helper function to plot geographical information such as city limits
-        """
-        gdf = gpd.read_file('mapdata/Hamburg_Stadtteilestatistik.shp')
-        print(gdf.crs) # info from .prj file
-
-        # Note: could add map using contextily, here we do need Web Mercator (EPSG:3857)
-        # list of EPSG codes https://en.wikipedia.org/wiki/EPSG_Geodetic_Parameter_Dataset
-        gdf = gdf.to_crs(epsg=4326) # latitude/longitude
-        gdf.plot(ax=hax, color='white', edgecolor='grey')
-
 
     def cluster_plot(self, *, hax, cluster_data, cluster_labels, id_cluster: int, indicate_center=False, kwargs):
         """
@@ -581,12 +566,12 @@ class MyPlotter:
 
         return {'files':fn}
 
-    def geoplot_cluster_analysis(self, *, res:MyResult, only_local=False):
-        # Colors we use to indicate cluster points.
-        # These are the matplotlib default colors except gray, https://matplotlib.org/stable/gallery/color/color_cycle_default.html
-        # Gray is used to indicate city limits, devices that are not considered for cluster analysis because they are stationary, etc.
-        iter_colors = cycle(['blue','orange','green','red','purple','brown','pink','olive','cyan'])
-        cluster_counter=0
+    def geoplot_cluster_analysis(self, *, res:MyResult, plot_config=None):
+        pc_name = ''
+        pc = None
+        if plot_config:
+            pc_name = next(iter(plot_config))
+            pc = plot_config[pc_name]
 
         # Note: points that have no neighbor within the distance threshould count as single-element cluster with their own ID
         cluster_labels = res.cluster_labels
@@ -602,14 +587,15 @@ class MyPlotter:
         # -> then we plot the correct points
         X = generate_input_for_clusteralgo(res.data)
 
+        # prepare plots
         fig,hax = self.plot_new()
         # fig_p,hax_p = self.plot_new({'subplot_kw':{'projection':'polar'}})
         fig_p,hax_p = self.plot_new({'projection':'polar'})
         hax_p.set_rscale('log')
 
-        # for correct z-stacking: plot city limits and all known devices first
-        if only_local:
-            self.plot_city(hax)
+        # For correct z-stacking: plot city limits and all known devices first
+        if pc:
+            pc['f'](hax)
         if res.ag.exclude_stationary_devices:
             # when the stationary devices are excluded from the data being clustered, be sure to indicate their positions on the map with a different marker style
             data_complete_stationary = list( filter(lambda d: d['flag_in_motion']==0, res.data_complete) )
@@ -636,7 +622,7 @@ class MyPlotter:
             Xtmp_SEclusters = Xtmp[idx_datapoints_single_element_clusters,:]
             hax.plot(Xtmp_SEclusters[:,1], Xtmp_SEclusters[:,0], 'o', color='gray', markerfacecolor='none', label='single-element "clusters"')
 
-        # print(res.cluster_infos)
+        # Now plot the clusters
         for curr_c in res.cluster_infos:
             # for correct z stacking: plot persistence traces first (would be better to plot *all* persistence traces first, then all current positions)
             curr_color = curr_c.marker_color
@@ -647,33 +633,6 @@ class MyPlotter:
             dist_km_saturated = np.maximum(0.1, np.minimum(curr_c.dist_km, 100)) # elementwise saturation (large values are capped; for small values some radius_minimum is displayed)
             hax_p.plot(np.deg2rad(curr_c.initial_course),dist_km_saturated, 'o',color=curr_color)
 
-        """
-        for id_cluster in sorted_cluster_ids:
-            # if requested by user, ignore single-element 'clusters'
-            curr_cluster_nele = dict(counts_cluster_labels)[id_cluster]
-            if res.ag.exclude_isolated_points and curr_cluster_nele<=1:
-                continue
-            #
-            # for correct z stacking: plot persistence traces first (would be better to plot *all* persistence traces first, then all current positions)
-            curr_color = next(iter_colors)
-            if self.dl.has_data_for_tracepersistence():
-                # trace persistence only if data source can provided needed data (currently only for SQL DB)
-                self.cluster_plot_persistence(hax=hax, cluster_complete_data=res.data, cluster_labels=cluster_labels, id_cluster=id_cluster, trace_persistence=res.ag.device_trace_persistence, kwargs={'color':curr_color, 'alpha':0.5})
-            curr_cluster_center = self.cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':curr_color})
-            initial_course,dist_rad = get_nav(res.observer_pos, curr_cluster_center)
-            dist_km = cfg['rho']*dist_rad
-            dist_km_saturated = np.maximum(0.1, np.minimum(dist_km, 100)) # elementwise saturation (large values are capped; for small values some radius_minimum is displayed)
-            hax_p.plot(np.deg2rad(initial_course),dist_km_saturated, 'o',color=curr_color)
-            #
-            if store_ci:
-                curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, latitude=curr_cluster_center[0], longitude=curr_cluster_center[1], course=initial_course, dist=dist_km, marker_color=curr_color)
-                self.cluster_infos.append(curr_ci)
-                print(curr_ci)
-            #
-            cluster_counter+=1
-            if cluster_counter>=cfg['max_clusters']:
-                break
-        """
         #
         # plot finalization #1
         # (has to be done for ALL plots before call to 'plot_show_or_save')
@@ -681,9 +640,9 @@ class MyPlotter:
         hax.set_xlabel('longitude')
         hax.set_ylabel('latitude')
         hax.set_title('Result of Clustering Analysis')
-        if only_local:
-            hax.set_xlim(9.7, 10.35)
-            hax.set_ylim(53.35, 53.75)
+        if pc:
+            hax.set_xlim(pc['long_range'])
+            hax.set_ylim(pc['lat_range'])
         fig.legend()
         #
         # plot finalization #2 (polar plot)
@@ -700,26 +659,36 @@ class MyPlotter:
         # Store plots
         #
         my_file_key = 'clusters'
-        if only_local:
-            my_file_key = 'clusters_local'
+        if pc:
+            my_file_key = 'clusters_'+pc_name
         self.fn[my_file_key] = self.plot_show_or_save(fig, my_file_key)
-        if not only_local:
+        if not pc:
             # for polar plot, local plot looks the same (currently only difference for standard plot would be adjustment of coordinate limits and plot of city geographics)
             self.fn[my_file_key+'_polar'] = self.plot_show_or_save(fig_p, my_file_key+'_polar')
 
 
     def doit(self, *, res:MyResult):
-        """
-        # Note: points that have no neighbor within the distance threshould count as single-element cluster with their own ID
-        counts_cluster_labels = Counter(res.cluster_labels)
-        counts_cluster_labels = sorted(counts_cluster_labels.items(), key=lambda _: _[1], reverse=True)
-        # print(counts_cluster_labels)
-        sorted_cluster_ids = [
-            # convert np.int64 to int
-            int(_[0])
-            for _ in counts_cluster_labels
-        ]
-        """
+        def plot_map_hamburg(hax):
+            """
+            Helper function to plot geographical information such as city limits
+            """
+            gdf = gpd.read_file('mapdata/Hamburg_Stadtteilestatistik.shp')
+            print(gdf.crs) # info from .prj file
+
+            # Note: could add map using contextily, here we do need Web Mercator (EPSG:3857)
+            # list of EPSG codes https://en.wikipedia.org/wiki/EPSG_Geodetic_Parameter_Dataset
+            gdf = gdf.to_crs(epsg=4326) # latitude/longitude
+            gdf.plot(ax=hax, color='white', edgecolor='grey')
+
+        plot_cfg = {
+            # note that the key of the entry becomes part of the filename of any generated image files, use only characters safe in URLs and on all platforms
+            'hamburg': {
+                'f': plot_map_hamburg, 'lat_range': (53.35, 53.75), 'long_range': (9.7, 10.35)
+            }
+        }
+
+        # zero out variables we use to collect infos returned to caller at the end of this function
+        self.reset_status()
 
         fig,hax = self.plot_new()
         hax.set_title("Hierarchical Clustering Dendrogram")
@@ -731,8 +700,8 @@ class MyPlotter:
         hax.set_yscale('log')
         self.fn['dendrogram'] = self.plot_show_or_save(fig, 'dendrogram')
 
-        self.geoplot_cluster_analysis(res=res, only_local=False)
-        self.geoplot_cluster_analysis(res=res, only_local=True)
+        self.geoplot_cluster_analysis(res=res)
+        self.geoplot_cluster_analysis(res=res, plot_config=plot_cfg)
 
         return {'files':self.fn, 'diag_info':self.diag_info, 'clusters':self.cluster_infos}
 

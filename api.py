@@ -57,7 +57,7 @@ def location_worker(user_pos, *, ag):
     # use DB for current positions
     my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
     my_a = MyAnalyzer(dl=my_dl, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix)
-    res = my_a.main(observer_pos=user_pos, ag=ag)
+    res = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
     my_p = MyPlotter(
         dl=my_dl,
         obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix

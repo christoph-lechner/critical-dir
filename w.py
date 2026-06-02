@@ -45,7 +45,7 @@ class ClusterInfo:
     dist: float
     marker_color_html: str
     def __str__(self):
-        return f"ID={self.cluster_ID}: N={self.N}, center={self.latitude}, {self.longitude}, course={self.course} deg, dist={self.dist}"
+        return f"ID={self.cluster_ID}: N={self.N}, center=({self.latitude},{self.longitude}), course={self.course} deg, dist={self.dist}"
     def table_header(self):
         # part of dervied dataclass to ensure that header and string representation of rows have matching layout
         return '<tr><td>(ID)</td><td>N</td><td>center</td><td>course [deg]</td><td>dist [km]</td><td><!-- for inspect link --></td></tr>'
@@ -73,6 +73,7 @@ class MyResult:
         #
         model: sklearn.cluster._agglomerative.AgglomerativeClustering # result of cluster analysis (needed for dendrogram)
         cluster_labels: list[int]
+        cluster_infos: list[ClusterInfo]
         #
         observer_pos: np.array
         #
@@ -270,7 +271,7 @@ class MyAnalyzer:
         self.fprefix = fprefix
         self.obj_path = obj_path
 
-    def main(self, *, observer_pos, ag: AlgoConfig):
+    def perform_analysis(self, *, observer_pos, ag: AlgoConfig):
         if not isinstance(self.dl, DataLoader):
             raise ValueError('expecting DataLoader object')
 
@@ -328,16 +329,47 @@ class MyAnalyzer:
         cluster_labels = model.fit_predict(Xrad)
         # print(cluster_labels)
 
+
+        """
+        Now the dataset is divided into clusters -> analyze them.
+        """
+        # Note: points that have no neighbor within the distance threshould count as single-element cluster with their own ID
+        counts_cluster_labels = Counter(cluster_labels)
+        counts_cluster_labels = sorted(counts_cluster_labels.items(), key=lambda _: _[1], reverse=True)
+        # print(counts_cluster_labels)
+        sorted_cluster_ids = [
+            # convert np.int64 to int
+            int(_[0])
+            for _ in counts_cluster_labels
+        ]
+
+        for id_cluster in sorted_cluster_ids:
+            # if requested by user, ignore single-element 'clusters'
+            curr_cluster_nele = dict(counts_cluster_labels)[id_cluster]
+            if ag.exclude_isolated_points and curr_cluster_nele<=1:
+                continue
+
+            curr_color='b' # FIXME: make colors dynamic
+
+            curr_cluster_center = cluster_compute_center(cluster_data=X, cluster_labels=cluster_labels, id_cluster=id_cluster)
+            # curr_cluster_center = self.cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':curr_color})
+            initial_course,dist_rad = get_nav(observer_pos, curr_cluster_center)
+            dist_km = cfg['rho']*dist_rad
+            curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, latitude=curr_cluster_center[0], longitude=curr_cluster_center[1], course=initial_course, dist=dist_km, marker_color_html=matplotlib.colors.to_hex(curr_color))
+            cluster_infos.append(curr_ci)
+
+
         print('TODO: record diag_info somewhere')
         return MyResult(
+            data_timestamp=data_timestamp_load,
             # complete data set
             data_complete=data_complete,
-            # data actually used for analysis (can be a subset of all data points)
+            # data actually used for analysis (depending on configuration settings, this can be a subset of all data points)
             data=data,
-            data_timestamp=data_timestamp_load,
             #
             model = model, # retain the result of the analysis for dendrogram generation
             cluster_labels=cluster_labels,
+            cluster_infos=cluster_infos,
             #
             observer_pos=observer_pos,
             #
@@ -455,6 +487,7 @@ class MyPlotter:
         cluster_complete_data: expects list of dicts, as loaded from single JSON file
         trace_persistence: persistence of trace, in seconds
         """
+        # FIXME: 2026-06-02: name of argument 'cluster_complete_data' is misleading
         idx = [_ for _,x in enumerate(cluster_labels) if x==id_cluster]
         if len(idx)==0:
             print(f'warning: no cluster to plot for id={id_cluster}')
@@ -558,7 +591,8 @@ class MyPlotter:
             int(_[0])
             for _ in counts_cluster_labels
         ]
-        # X matrix is generated from data that was actually used for the clustering procedure
+        # X matrix has to be generated from data that was actually used for the clustering procedure
+        # -> then we plot the correct points
         X = generate_input_for_clusteralgo(res.data)
 
         fig,hax = self.plot_new()
@@ -570,6 +604,7 @@ class MyPlotter:
         if only_local:
             self.plot_city(hax)
         if res.ag.exclude_stationary_devices:
+            # when the stationary devices are excluded from the data being clustered, be sure to indicate their positions on the map with a different marker style
             data_complete_stationary = list( filter(lambda d: d['flag_in_motion']==0, res.data_complete) )
             Xtmp = generate_input_for_clusteralgo(data_complete_stationary)
             hax.plot(Xtmp[:,1], Xtmp[:,0], '+', color='gray', label='stationary devices')
@@ -586,7 +621,7 @@ class MyPlotter:
                 idx_datapoints_single_element_clusters.append(
                     [_ for _,x in enumerate(cluster_labels) if x==qqq]
                 )
-            # FIXME: here we have a nested "list of lists" -> generate single-level list
+            # FIXME: here we have a nested "list of lists" -> generate single-level list already above?
             from itertools import chain
             idx_datapoints_single_element_clusters = list(chain.from_iterable(idx_datapoints_single_element_clusters))
 
@@ -602,10 +637,9 @@ class MyPlotter:
             #
             # for correct z stacking: plot persistence traces first (would be better to plot *all* persistence traces first, then all current positions)
             curr_color = next(iter_colors)
-            print('FIXME: 2026-06-02: disabled for now')
-            #if self.dl.has_data_for_tracepersistence():
-            #    # trace persistence currently only for data coming from SQL DB
-            #    self.cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, trace_persistence=res.ag.device_trace_persistence, kwargs={'color':curr_color, 'alpha':0.5})
+            if self.dl.has_data_for_tracepersistence():
+                # trace persistence currently only for data coming from SQL DB
+                self.cluster_plot_persistence(hax=hax, cluster_complete_data=res.data, cluster_labels=cluster_labels, id_cluster=id_cluster, trace_persistence=res.ag.device_trace_persistence, kwargs={'color':curr_color, 'alpha':0.5})
             curr_cluster_center = self.cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':curr_color})
             initial_course,dist_rad = get_nav(res.observer_pos, curr_cluster_center)
             dist_km = cfg['rho']*dist_rad
@@ -710,7 +744,7 @@ if __name__=='__main__':
     # default loader is DB loader
     my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
     my_a = MyAnalyzer(dl=my_dl)
-    res = my_a.main(observer_pos=my_pos, ag = AlgoConfig(exclude_isolated_points = False))
-    print(type(res))
+    res = my_a.perform_analysis(observer_pos=my_pos, ag = AlgoConfig(exclude_isolated_points = False))
+    print(res)
     my_p = MyPlotter(dl=my_dl)
     my_p.doit(res=res)

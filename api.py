@@ -11,7 +11,8 @@ import numpy as np
 from pathlib import Path
 import datetime
 
-from w import AlgoConfig,main,inspect_generate_img
+from w import DataLoaderDB,AlgoConfig,main,inspect_generate_img
+from db_conn import get_db_conn
 
 class LocationRequest(BaseModel):
     latitude: float
@@ -53,10 +54,10 @@ def location_worker(user_pos, *, ag):
     tstr = tic.strftime('%Y%m%dT%H%M%S.%f')
     fprefix = f'img_{tstr}_'
 
-    # no datafile given --> use DB for current positions
+    # use DB for current positions
+    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
     r = main(
-            observer_pos=user_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix, ag=ag
-            # exclude_isolated_points=flag_iso, cluster_dist_thres=cfg_cluster_dist, cluster_trace_persistence=cfg_tpersistence
+            dl=my_dl, observer_pos=user_pos, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix, ag=ag
     )
 
 
@@ -164,8 +165,11 @@ async def inspect(clat: float, clong: float):
     tnow = datetime.datetime.now()
     tstr = tnow.strftime('%Y%m%dT%H%M%S.%f')
     fprefix = f'img_{tstr}_'
+
     fn_img = inspect_worker(lat=clat, long=clong)
-    r = inspect_generate_img(observer_pos=[clat,clong], obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix, ag=AlgoConfig())
+    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
+    r = inspect_generate_img(dl=my_dl, observer_pos=[clat,clong], obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix, ag=AlgoConfig())
+
     fn_img = r['files']['inspect']
     html = f"<html><body><a href=/myapp/>For iPhone PWA: Back</a><p>Inspecting local distribution of riders around {clat:.4f},{clong:.4f}. Note that this plot does not indicate cluster infos, so all positions are indicated with same marker color.<img src=\"objs/{fn_img}\"></body></html>"
     return HTMLResponse(content=html)

@@ -18,6 +18,7 @@ from sklearn.cluster import AgglomerativeClustering
 from collections import Counter
 from pathlib import Path
 from dataclasses import dataclass
+from abc import ABC, abstractmethod
 import geopandas as gpd
 from functools import partial
 from nav import get_nav
@@ -74,89 +75,110 @@ def generate_input_for_clusteralgo(data):
     return X
 
 
-def load_from_DB(return_all_fields=True):
-    """
-    First implementation to retrieve most recent coordinates seen for every device.
-    Uses temporal cut-off. If cut-off time is different from that used by CriticalMaps API server (source of the used data), the data points in the dataset will be different as well -- for instance if a device starts/ceases sending data.
-    return_all_fields=False: emulate data structure returned by JSON loading function.
-    """
-    # print('loading current positions from DB')
-    # establish DB connection
-    # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
-    conn = get_db_conn()
-    cur = conn.cursor(row_factory=dict_row)
+class DataLoader(ABC):
+    @abstractmethod
+    def get_data(self) -> list[dict]:
+        pass
 
-    # A device is considered stationary if it did not report in the previous hour a single position outside of a circle around its last known position
-    crit_stationary_radius = 100 # meters
-    cur.execute(
+    def has_data_for_tracepersistence(self) -> bool:
+        return False
+
+class DataLoaderDB(DataLoader):
+    def __init__(self, *, f_factory_DBconn: callable):
+        if not callable(f_factory_DBconn):
+            raise ValueError('expecting function as argument')
+        self.f_factory_DBconn = f_factory_DBconn
+
+    def has_data_for_tracepersistence(self) -> bool:
+        return True
+
+    def get_data(self, *, return_all_fields=True) -> list[dict]:
         """
-        WITH q_ts_mostrecent AS (
-            SELECT MAX(timestamp) AS timestamp_mostrecent FROM criticalmaps_data
-        ), qq AS (
+        First implementation to retrieve most recent coordinates seen for every device.
+        Uses temporal cut-off. If cut-off time is different from that used by CriticalMaps API server (source of the used data), the data points in the dataset will be different as well -- for instance if a device starts/ceases sending data.
+        return_all_fields=False: emulate data structure returned by JSON loading function.
+        """
+        # print('loading current positions from DB')
+        # establish DB connection
+        # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
+        conn = self.f_factory_DBconn()
+        cur = conn.cursor(row_factory=dict_row)
+
+        # A device is considered stationary if it did not report in the previous hour a single position outside of a circle around its last known position
+        crit_stationary_radius = 100 # meters
+        cur.execute(
+            """
+            WITH q_ts_mostrecent AS (
+                SELECT MAX(timestamp) AS timestamp_mostrecent FROM criticalmaps_data
+            ), qq AS (
+                SELECT
+                    c.deviceid,c.latitude,c.longitude,c.timestamp, ROW_NUMBER() OVER (PARTITION BY c.deviceid ORDER BY c.timestamp DESC) AS rn
+                FROM criticalmaps_data AS c, q_ts_mostrecent
+                WHERE timestamp>=q_ts_mostrecent.timestamp_mostrecent-150
+            )
             SELECT
-                c.deviceid,c.latitude,c.longitude,c.timestamp, ROW_NUMBER() OVER (PARTITION BY c.deviceid ORDER BY c.timestamp DESC) AS rn
-            FROM criticalmaps_data AS c, q_ts_mostrecent
-            WHERE timestamp>=q_ts_mostrecent.timestamp_mostrecent-150
+                deviceid AS device, latitude, longitude, timestamp,
+                CASE
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM criticalmaps_data AS c, q_ts_mostrecent
+                        WHERE c.deviceid=qq.deviceid
+                            -- consider only recent history for checking if there were any movements
+                            AND c.timestamp>=q_ts_mostrecent.timestamp_mostrecent-3600
+                            -- First spatial filter round: does the cube contain the point (pre-filter that can be indexed)
+                            -- TODO: TO BE CHECKED
+                            -- AND earth_box(ll_to_earth(qq.latitude,qq.longitude),100) @> ll_to_earth(c.latitude,c.longitude)
+                            -- Final spatial filtering round, only has to consider all points in the box
+                            AND earth_distance(ll_to_earth(c.latitude,c.longitude),ll_to_earth(qq.latitude,qq.longitude))>=%s
+                    )
+                    THEN 1 ELSE 0
+                END AS flag_in_motion
+            FROM qq
+            WHERE
+                -- be sure that there are not duplicate entries with identical combination of (deviceid;timestamp)
+                rn=1;
+            """,
+            (crit_stationary_radius,)
         )
-        SELECT
-            deviceid AS device, latitude, longitude, timestamp,
-            CASE
-                WHEN EXISTS (
-                    SELECT 1
-                    FROM criticalmaps_data AS c, q_ts_mostrecent
-                    WHERE c.deviceid=qq.deviceid
-                        -- consider only recent history for checking if there were any movements
-                        AND c.timestamp>=q_ts_mostrecent.timestamp_mostrecent-3600
-                        -- First spatial filter round: does the cube contain the point (pre-filter that can be indexed)
-                        -- TODO: TO BE CHECKED
-                        -- AND earth_box(ll_to_earth(qq.latitude,qq.longitude),100) @> ll_to_earth(c.latitude,c.longitude)
-                        -- Final spatial filtering round, only has to consider all points in the box
-                        AND earth_distance(ll_to_earth(c.latitude,c.longitude),ll_to_earth(qq.latitude,qq.longitude))>=%s
-                )
-                THEN 1 ELSE 0
-            END AS flag_in_motion
-        FROM qq
-        WHERE
-            -- be sure that there are not duplicate entries with identical combination of (deviceid;timestamp)
-            rn=1;
-        """,
-        (crit_stationary_radius,)
-    )
-    res_rows_complete = cur.fetchall()
-    if return_all_fields:
-        return res_rows_complete
+        res_rows_complete = cur.fetchall()
+        if return_all_fields:
+            # FIXME: add code to close DB connection
+            return res_rows_complete
 
-    # Structure returned from DB has same structure as data loaded from JSON files (containing text obtained from CriticalMaps API interface):
-    # A list of dictionaries with the structure: {"device": "...", "latitude": float, "longitude": float, "timestamp": unix_epoch_value}
-    # The only difference is that the latitude/longitude values have been scaled to usual (float) values, while the API returns int values (scaled up by a factor of 1E6)
-    keys_to_keep = ['device', 'latitude', 'longitude', 'timestamp']
-    data = [
-        {k: d[k] for k in keys_to_keep}
-        for d in res_rows_filt
-    ]
-    return data
+        # Structure returned from DB has same structure as data loaded from JSON files (containing text obtained from CriticalMaps API interface):
+        # A list of dictionaries with the structure: {"device": "...", "latitude": float, "longitude": float, "timestamp": unix_epoch_value}
+        # The only difference is that the latitude/longitude values have been scaled to usual (float) values, while the API returns int values (scaled up by a factor of 1E6)
+        keys_to_keep = ['device', 'latitude', 'longitude', 'timestamp']
+        data = [
+            {k: d[k] for k in keys_to_keep}
+            for d in res_rows_filt
+        ]
+        # FIXME: add code to close DB connection
+        return data
 
-def load_clustertestdata():
-    def make_datapoint(lat,long):
-        return {'device':'1234', 'latitude':lat, 'longitude':long, 'timestamp':1}
 
-    print('*** INFO: generating test data set. Still have to implement unique "device IDs" ***')
+class DataLoaderTestData(DataLoader):
+    def __init__(self):
+        pass
 
-    # Test data points on the equator (1 deg corresponds to: 2*pi*6371km/360 deg = 111.2 km/deg)
-    data = [make_datapoint(0,0), make_datapoint(0,0.1), make_datapoint(0,0.3), make_datapoint(0,1), make_datapoint(0,2),
+    def get_data(self, *, return_all_fields=True) -> list[dict]:
+        def make_datapoint(lat,long):
+            return {'device':'1234', 'latitude':lat, 'longitude':long, 'timestamp':1}
+
+        print('*** INFO: generating test data set. Still have to implement unique "device IDs" ***')
+
+        # Test data points on the equator (1 deg corresponds to: 2*pi*6371km/360 deg = 111.2 km/deg)
+        data = [
+            make_datapoint(0,0), make_datapoint(0,0.1), make_datapoint(0,0.3), make_datapoint(0,1), make_datapoint(0,2),
             #
             make_datapoint(0,5),
             make_datapoint(0,5.005), # with rcluster=2km this one will be part of a cluster
             make_datapoint(0,4.98),  # with rcluster=2km this one will not be part of a cluster
-    ]
-    latitude  = [_['latitude']  for _ in data]
-    longitude = [_['longitude'] for _ in data]
-    X = np.vstack((np.array(latitude),np.array(longitude)))
-    X = np.transpose(X)
+        ]
 
-    # Structure returned from DB has same structure as data loaded from JSON files (containing text obtained from CriticalMaps API interface):
-    # A list of dictionaries with the structure: {"device": "...", "latitude": float, "longitude": float, "timestamp": unix_epoch_value}
-    return data
+        # Structure returned from DB has same structure as data loaded from JSON files (containing text obtained from CriticalMaps API interface):
+        # A list of dictionaries with the structure: {"device": "...", "latitude": float, "longitude": float, "timestamp": unix_epoch_value}
+        return data
 
 ##############################
 
@@ -306,12 +328,16 @@ def cluster_plot_persistence(*, hax, cluster_complete_data, cluster_labels, id_c
         plot_device_trace(cur=cur, hax=hax, deviceid=curr_devid, timestamp_min=timecutoff_epoch, kwargs=kwargs)
 
 
-def inspect_generate_img(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None, ag: AlgoConfig):
+# def inspect_generate_img(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None, ag: AlgoConfig):
+def inspect_generate_img(*, dl: DataLoader, observer_pos, obj_path=None, fprefix=None, ag: AlgoConfig):
     """
     f_dataloader: Function that is called (without any arguments) to load the data to be processed, expected to return two objects: data,X. 'data' is the data formatted as in the JSON file, X is the matrix containing geodata for clustering process.
     obj_path: If provided, this switches on storing images to files instead of displaying them
     """
     # REMARK: function is based on modified copy of main plotting function
+
+    if not isinstance(dl, DataLoader):
+        raise ValueError('expecting DataLoader object')
 
     # fprefix should be unique to this session
     if fprefix is None:
@@ -338,9 +364,7 @@ def inspect_generate_img(*, f_dataloader=load_from_DB, observer_pos, obj_path=No
         # returning the relative path since the webclient sees a different path layout than the server
         return rel_path
 
-    if not (f_dataloader and callable(f_dataloader)):
-        raise ValueError('expecting function')
-    data = f_dataloader()
+    data = dl.get_data()
     X = generate_input_for_clusteralgo(data)
 
     # establish DB connection
@@ -376,11 +400,15 @@ def inspect_generate_img(*, f_dataloader=load_from_DB, observer_pos, obj_path=No
 
     return {'files':fn}
 
-def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None, ag: AlgoConfig):
+# def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None, ag: AlgoConfig):
+def main(*, dl: DataLoader, observer_pos, obj_path=None, fprefix=None, ag: AlgoConfig):
     """
-    f_dataloader: Function that is called (without any arguments) to load the data to be processed, expected to return two objects: data,X. 'data' is the data formatted as in the JSON file, X is the matrix containing geodata for clustering process.
+    dl: Instance of DataLoader-derived class. Contains code for loading the data to be processed. Return 'data' is a list of dicts with the data formatted as in JSON files.
     obj_path: If provided, this switches on storing images to files instead of displaying them
     """
+
+    if not isinstance(dl, DataLoader):
+        raise ValueError('expecting DataLoader object')
 
     ### HERE WE COLLECT INFOS TO BE RETURNED TO CALLER (= the client via the API server) ###
     diag_info = []
@@ -412,10 +440,8 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
         # returning the relative path since the webclient sees a different path layout than the server
         return rel_path
 
-    if not (f_dataloader and callable(f_dataloader)):
-        raise ValueError('expecting function')
     # Note: nomenclature: "complete" means all fields returned from the loader function. If DB is used as data source, additional information may be provided
-    data_complete = f_dataloader()
+    data_complete = dl.get_data()
     data_complete_moving = list( filter(lambda d: d['flag_in_motion']==1, data_complete) )
     ndev_tot = len(data_complete)
     ndev_moving = len(data_complete_moving)
@@ -473,7 +499,6 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
     hax.set_ylim(0.1, 3.5*cfg['rho']) # maximum length of great circle is pi*radius
     hax.set_yscale('log')
     fn['dendrogram'] = plot_show_or_save(fig, 'dendrogram')
-
 
     # Note: points that have no neighbor within the distance threshould count as single-element cluster with their own ID
     counts_cluster_labels = Counter(cluster_labels)
@@ -534,7 +559,7 @@ def main(*, f_dataloader=load_from_DB, observer_pos, obj_path=None, fprefix=None
             #
             # for correct z stacking: plot persistence traces first (would be better to plot *all* persistence traces first, then all current positions)
             curr_color = next(iter_colors)
-            if f_dataloader==load_from_DB:
+            if dl.has_data_for_tracepersistence():
                 # trace persistence currently only for data coming from SQL DB
                 cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, trace_persistence=ag.device_trace_persistence, kwargs={'color':curr_color, 'alpha':0.5})
             curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':curr_color})
@@ -615,4 +640,5 @@ if __name__=='__main__':
     # r = main(f_dataloader=partial(dataloader_file, datafile='cmdata/data_20260528T100900_002729.json'), observer_pos=my_pos, exclude_isolated_points=False)
 
     # default loader is DB loader
-    r = main(observer_pos=my_pos, ag = AlgoConfig(exclude_isolated_points = False))
+    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
+    r = main(dl=my_dl, observer_pos=my_pos, ag = AlgoConfig(exclude_isolated_points = False))

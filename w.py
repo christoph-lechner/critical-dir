@@ -668,6 +668,7 @@ class MyPlotter:
 
 
     def doit(self, *, res:MyResult):
+        # Note: using suitable "shapefiles", you can plot also other maps in the background
         def plot_map_hamburg(hax):
             """
             Helper function to plot geographical information such as city limits

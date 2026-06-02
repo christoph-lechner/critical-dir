@@ -221,38 +221,6 @@ def spatial_filter_HH(d):
     is_in_bbox = (9.7<=longitude) and (longitude<=10.35) and (53.35<=latitude) and (latitude<=53.75)
     return is_in_bbox
 
-def plot_dendrogram(hax, model, **kwargs):
-    """
-    Create linkage matrix and then plot the dendrogram
-
-    based on code from https://scikit-learn.org/stable/auto_examples/cluster/plot_agglomerative_dendrogram.html#sphx-glr-auto-examples-cluster-plot-agglomerative-dendrogram-py
-    """
-
-    # create the counts of samples under each node
-    counts = np.zeros(model.children_.shape[0])
-    n_samples = len(model.labels_)
-    for i, merge in enumerate(model.children_):
-        current_count = 0
-        for child_idx in merge:
-            if child_idx < n_samples:
-                current_count += 1  # leaf node
-            else:
-                current_count += counts[child_idx - n_samples]
-        counts[i] = current_count
-
-    # Using 'haversine' metric, distances are in radians
-    # -> convert to km.
-    my_dist = model.distances_
-    print(my_dist)
-    my_dist *= cfg['rho']
-    linkage_matrix = np.column_stack(
-        [model.children_, my_dist, counts]
-    ).astype(float)
-    # print(linkage_matrix)
-
-    # Plot the corresponding dendrogram
-    dendrogram(linkage_matrix, ax=hax, **kwargs)
-
 def cluster_compute_center(*, cluster_data, cluster_labels, id_cluster: int):
     """
     Compute "Geometric median" (minimizes L1 norm in 2-D).
@@ -279,78 +247,6 @@ def cluster_compute_center(*, cluster_data, cluster_labels, id_cluster: int):
     )
     return result.x
 
-def plot_city(hax):
-    """
-    Helper function to plot geographical information such as city limits
-    """
-    gdf = gpd.read_file('mapdata/Hamburg_Stadtteilestatistik.shp')
-    print(gdf.crs) # info from .prj file
-
-    # Note: could add map using contextily, here we do need Web Mercator (EPSG:3857)
-    # list of EPSG codes https://en.wikipedia.org/wiki/EPSG_Geodetic_Parameter_Dataset
-    gdf = gdf.to_crs(epsg=4326) # latitude/longitude
-    gdf.plot(ax=hax, color='white', edgecolor='grey')
-
-
-def cluster_plot(*, hax, cluster_data, cluster_labels, id_cluster: int, indicate_center=False, kwargs):
-    """
-    cluster_data: just the coordinate matrix, holding longitude and latitude for all data points
-    """
-    idx = [_ for _,x in enumerate(cluster_labels) if x==id_cluster]
-    if len(idx)==0:
-        print(f'warning: no cluster to plot for id={id_cluster}')
-    points = cluster_data[idx,:]
-    hax.plot(points[:,1], points[:,0], 'o', **kwargs)
-    if indicate_center:
-        center = cluster_compute_center(cluster_data=cluster_data, cluster_labels=cluster_labels, id_cluster=id_cluster)
-        hax.plot(center[1], center[0], '+', **kwargs)
-        return [center[0],center[1]]
-
-def plot_device_trace(*, cur, hax, deviceid, timestamp_min, timestamp_max=None, kwargs={}):
-    """
-    timestamp_min: only consider points after this Unix epoch value
-    timestamp_max: planned feature: to be able to specify a time range to be considered for plotting
-    kwargs: additional args to be passed to 'plot' function call
-    """
-    if timestamp_max:
-        raise ValueError('--- not implemented yet ---')
-
-    cur.execute(
-        """
-        SELECT longitude,latitude FROM criticalmaps_data WHERE deviceid=%s AND timestamp>=%s ORDER BY timestamp DESC;
-        """,
-        (deviceid,timestamp_min)
-    )
-    res_rows = cur.fetchall()
-    if len(res_rows)<1:
-        print(f'Warning: deviceid={curr_devid}: insufficient data for trace plot')
-        return len(res_rows)
-
-    longitude = [_['longitude'] for _ in res_rows]
-    latitude  = [_['latitude']  for _ in res_rows]
-    hax.plot(longitude, latitude, '-', **kwargs)
-    return len(res_rows)
-
-def cluster_plot_persistence(*, hax, cluster_complete_data, cluster_labels, id_cluster: int, trace_persistence=900, kwargs):
-    """
-    cluster_complete_data: expects list of dicts, as loaded from single JSON file
-    trace_persistence: persistence of trace, in seconds
-    """
-    idx = [_ for _,x in enumerate(cluster_labels) if x==id_cluster]
-    if len(idx)==0:
-        print(f'warning: no cluster to plot for id={id_cluster}')
-        return # nothing to do
-
-    # establish DB connection
-    # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
-    conn = get_db_conn()
-    cur = conn.cursor(row_factory=dict_row)
-
-    # iterate over device IDs for all points in this cluster
-    for p in idx:
-        curr_devid = cluster_complete_data[p]['device']
-        timecutoff_epoch = time.time() - trace_persistence
-        plot_device_trace(cur=cur, hax=hax, deviceid=curr_devid, timestamp_min=timecutoff_epoch, kwargs=kwargs)
 
 
 class MyAnalyzer:
@@ -502,6 +398,111 @@ class MyPlotter:
         # returning the relative path since the webclient sees a different path layout than the server
         return rel_path
 
+    def plot_city(self, hax):
+        """
+        Helper function to plot geographical information such as city limits
+        """
+        gdf = gpd.read_file('mapdata/Hamburg_Stadtteilestatistik.shp')
+        print(gdf.crs) # info from .prj file
+
+        # Note: could add map using contextily, here we do need Web Mercator (EPSG:3857)
+        # list of EPSG codes https://en.wikipedia.org/wiki/EPSG_Geodetic_Parameter_Dataset
+        gdf = gdf.to_crs(epsg=4326) # latitude/longitude
+        gdf.plot(ax=hax, color='white', edgecolor='grey')
+
+
+    def cluster_plot(self, *, hax, cluster_data, cluster_labels, id_cluster: int, indicate_center=False, kwargs):
+        """
+        cluster_data: just the coordinate matrix, holding longitude and latitude for all data points
+        """
+        idx = [_ for _,x in enumerate(cluster_labels) if x==id_cluster]
+        if len(idx)==0:
+            print(f'warning: no cluster to plot for id={id_cluster}')
+        points = cluster_data[idx,:]
+        hax.plot(points[:,1], points[:,0], 'o', **kwargs)
+        if indicate_center:
+            center = cluster_compute_center(cluster_data=cluster_data, cluster_labels=cluster_labels, id_cluster=id_cluster)
+            hax.plot(center[1], center[0], '+', **kwargs)
+            return [center[0],center[1]]
+
+    def plot_device_trace(self, *, cur, hax, deviceid, timestamp_min, timestamp_max=None, kwargs={}):
+        """
+        timestamp_min: only consider points after this Unix epoch value
+        timestamp_max: planned feature: to be able to specify a time range to be considered for plotting
+        kwargs: additional args to be passed to 'plot' function call
+        """
+        if timestamp_max:
+            raise ValueError('--- not implemented yet ---')
+
+        cur.execute(
+            """
+            SELECT longitude,latitude FROM criticalmaps_data WHERE deviceid=%s AND timestamp>=%s ORDER BY timestamp DESC;
+            """,
+            (deviceid,timestamp_min)
+        )
+        res_rows = cur.fetchall()
+        if len(res_rows)<1:
+            print(f'Warning: deviceid={curr_devid}: insufficient data for trace plot')
+            return len(res_rows)
+
+        longitude = [_['longitude'] for _ in res_rows]
+        latitude  = [_['latitude']  for _ in res_rows]
+        hax.plot(longitude, latitude, '-', **kwargs)
+        return len(res_rows)
+
+    def cluster_plot_persistence(self, *, hax, cluster_complete_data, cluster_labels, id_cluster: int, trace_persistence=900, kwargs):
+        """
+        cluster_complete_data: expects list of dicts, as loaded from single JSON file
+        trace_persistence: persistence of trace, in seconds
+        """
+        idx = [_ for _,x in enumerate(cluster_labels) if x==id_cluster]
+        if len(idx)==0:
+            print(f'warning: no cluster to plot for id={id_cluster}')
+            return # nothing to do
+
+        # establish DB connection
+        # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
+        conn = get_db_conn()
+        cur = conn.cursor(row_factory=dict_row)
+
+        # iterate over device IDs for all points in this cluster
+        for p in idx:
+            curr_devid = cluster_complete_data[p]['device']
+            timecutoff_epoch = time.time() - trace_persistence
+            self.plot_device_trace(cur=cur, hax=hax, deviceid=curr_devid, timestamp_min=timecutoff_epoch, kwargs=kwargs)
+
+    def plot_dendrogram(self, hax, model, **kwargs):
+        """
+        Create linkage matrix and then plot the dendrogram
+
+        based on code from https://scikit-learn.org/stable/auto_examples/cluster/plot_agglomerative_dendrogram.html#sphx-glr-auto-examples-cluster-plot-agglomerative-dendrogram-py
+        """
+
+        # create the counts of samples under each node
+        counts = np.zeros(model.children_.shape[0])
+        n_samples = len(model.labels_)
+        for i, merge in enumerate(model.children_):
+            current_count = 0
+            for child_idx in merge:
+                if child_idx < n_samples:
+                    current_count += 1  # leaf node
+                else:
+                    current_count += counts[child_idx - n_samples]
+            counts[i] = current_count
+
+        # Using 'haversine' metric, distances are in radians
+        # -> convert to km.
+        my_dist = model.distances_
+        print(my_dist)
+        my_dist *= cfg['rho']
+        linkage_matrix = np.column_stack(
+            [model.children_, my_dist, counts]
+        ).astype(float)
+        # print(linkage_matrix)
+
+        # Plot the corresponding dendrogram
+        dendrogram(linkage_matrix, ax=hax, **kwargs)
+
     def inspect_generate_img(self, *, observer_pos, ag: AlgoConfig):
         # REMARK: function is based on modified copy of main plotting function
         data = self.dl.get_data()
@@ -518,7 +519,7 @@ class MyPlotter:
         for q in data:
             curr_devid = q['device']
             timecutoff_epoch = time.time() - ag.device_trace_persistence
-            plot_device_trace(cur=cur, hax=hax, deviceid=curr_devid, timestamp_min=timecutoff_epoch, kwargs={'color':'b', 'alpha':0.5})
+            self.plot_device_trace(cur=cur, hax=hax, deviceid=curr_devid, timestamp_min=timecutoff_epoch, kwargs={'color':'b', 'alpha':0.5})
         hax.plot(X[:,1],X[:,0], 'bo', label='rider positions')
         hax.plot(observer_pos[1], observer_pos[0], 'kx', label='center')
         #
@@ -567,7 +568,7 @@ class MyPlotter:
 
         # for correct z-stacking: plot city limits and all known devices first
         if only_local:
-            plot_city(hax)
+            self.plot_city(hax)
         if res.ag.exclude_stationary_devices:
             data_complete_stationary = list( filter(lambda d: d['flag_in_motion']==0, res.data_complete) )
             Xtmp = generate_input_for_clusteralgo(data_complete_stationary)
@@ -604,8 +605,8 @@ class MyPlotter:
             print('FIXME: 2026-06-02: disabled for now')
             #if self.dl.has_data_for_tracepersistence():
             #    # trace persistence currently only for data coming from SQL DB
-            #    cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, trace_persistence=res.ag.device_trace_persistence, kwargs={'color':curr_color, 'alpha':0.5})
-            curr_cluster_center = cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':curr_color})
+            #    self.cluster_plot_persistence(hax=hax, cluster_complete_data=data, cluster_labels=cluster_labels, id_cluster=id_cluster, trace_persistence=res.ag.device_trace_persistence, kwargs={'color':curr_color, 'alpha':0.5})
+            curr_cluster_center = self.cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':curr_color})
             initial_course,dist_rad = get_nav(res.observer_pos, curr_cluster_center)
             dist_km = cfg['rho']*dist_rad
             dist_km_saturated = np.maximum(0.1, np.minimum(dist_km, 100)) # elementwise saturation (large values are capped; for small values some radius_minimum is displayed)
@@ -669,7 +670,7 @@ class MyPlotter:
         fig,hax = self.plot_new()
         hax.set_title("Hierarchical Clustering Dendrogram")
         # plot the top three levels of the dendrogram
-        plot_dendrogram(hax, res.model, truncate_mode="level", p=7, color_threshold=res.ag.cluster_dist_thres)
+        self.plot_dendrogram(hax, res.model, truncate_mode="level", p=7, color_threshold=res.ag.cluster_dist_thres)
         hax.set_xlabel("number of points in node (or index of point if no parenthesis)")
         hax.set_ylabel("distance [km]")
         hax.set_ylim(0.1, 3.5*cfg['rho']) # maximum length of great circle is pi*radius

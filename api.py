@@ -87,9 +87,10 @@ def location_worker(user_pos, *, ag):
         r += "</table>\n"
         return r
 
-    ci = r['clusters']
-    ci = sorted(ci, key=lambda _: (_.N,-_.dist), reverse=True) # Note: tuple as sort key -> force sort order for clusters with identical N, list closer clusters first (if first element is identical, second element determines sort order)
-    ci_dist = sorted(ci, key=lambda _: _.dist, reverse=False)
+    # ci = r['clusters']
+    ci = res.cluster_infos
+    ci = sorted(ci, key=lambda _: (_.N,(-1)*_.dist_km), reverse=True) # Note: tuple as sort key -> force sort order for clusters with identical N, list closer clusters first (if first element is identical, second element determines sort order)
+    ci_dist = sorted(ci, key=lambda _: _.dist_km, reverse=False)
     html_info  = ''
     html_info += '<h3>Clusters (lowest distance first)</h3>'
     html_info += ci_as_table(ci_dist)

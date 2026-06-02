@@ -41,17 +41,18 @@ class ClusterInfo:
     latitude: float
     longitude: float
     N: int
-    course: float
-    dist: float
-    marker_color_html: str
+    initial_course: float
+    dist_km: float
+    marker_color: str
     def __str__(self):
         return f"ID={self.cluster_ID}: N={self.N}, center=({self.latitude},{self.longitude}), course={self.course} deg, dist={self.dist}"
     def table_header(self):
         # part of dervied dataclass to ensure that header and string representation of rows have matching layout
         return '<tr><td>(ID)</td><td>N</td><td>center</td><td>course [deg]</td><td>dist [km]</td><td><!-- for inspect link --></td></tr>'
     def as_html(self):
+        marker_color_html=matplotlib.colors.to_hex(self.marker_color)
         # replace by jinja template?
-        return f"<tr><td style=\"background-color: {self.marker_color_html}\">{self.cluster_ID}</td><td>{self.N}</td><td>{self.latitude:.2f}, {self.longitude:.2f}</td><td>{self.course:.2f}</td><td>{self.dist:.2f}</td><td><a href=\"api/inspect?clat={self.latitude:.6f}&clong={self.longitude:.6f}\" target=\"_blank\">Inspect</a></td></tr>"
+        return f"<tr><td style=\"background-color: {marker_color_html}\">{self.cluster_ID}</td><td>{self.N}</td><td>{self.latitude:.2f}, {self.longitude:.2f}</td><td>{self.initial_course:.2f}</td><td>{self.dist_km:.2f}</td><td><a href=\"api/inspect?clat={self.latitude:.6f}&clong={self.longitude:.6f}\" target=\"_blank\">Inspect</a></td></tr>"
 
 @dataclass(frozen=True)
 class AlgoConfig:
@@ -343,19 +344,25 @@ class MyAnalyzer:
             for _ in counts_cluster_labels
         ]
 
+
+        # Colors we use to indicate cluster points.
+        # These are the matplotlib default colors except gray, https://matplotlib.org/stable/gallery/color/color_cycle_default.html
+        # Gray is used to indicate city limits, devices that are not considered for cluster analysis because they are stationary, etc.
+        iter_colors = cycle(['blue','orange','green','red','purple','brown','pink','olive','cyan'])
+        cluster_counter=0
         for id_cluster in sorted_cluster_ids:
             # if requested by user, ignore single-element 'clusters'
             curr_cluster_nele = dict(counts_cluster_labels)[id_cluster]
             if ag.exclude_isolated_points and curr_cluster_nele<=1:
                 continue
 
-            curr_color='b' # FIXME: make colors dynamic
+            # assign colors already here
+            curr_color=next(iter_colors)
 
             curr_cluster_center = cluster_compute_center(cluster_data=X, cluster_labels=cluster_labels, id_cluster=id_cluster)
-            # curr_cluster_center = self.cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':curr_color})
             initial_course,dist_rad = get_nav(observer_pos, curr_cluster_center)
             dist_km = cfg['rho']*dist_rad
-            curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, latitude=curr_cluster_center[0], longitude=curr_cluster_center[1], course=initial_course, dist=dist_km, marker_color_html=matplotlib.colors.to_hex(curr_color))
+            curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, latitude=curr_cluster_center[0], longitude=curr_cluster_center[1], initial_course=initial_course, dist_km=dist_km, marker_color=curr_color)
             cluster_infos.append(curr_ci)
 
 
@@ -574,7 +581,7 @@ class MyPlotter:
 
         return {'files':fn}
 
-    def geoplot_cluster_analysis(self, *, res:MyResult, only_local=False, store_ci=True):
+    def geoplot_cluster_analysis(self, *, res:MyResult, only_local=False):
         # Colors we use to indicate cluster points.
         # These are the matplotlib default colors except gray, https://matplotlib.org/stable/gallery/color/color_cycle_default.html
         # Gray is used to indicate city limits, devices that are not considered for cluster analysis because they are stationary, etc.
@@ -629,6 +636,18 @@ class MyPlotter:
             Xtmp_SEclusters = Xtmp[idx_datapoints_single_element_clusters,:]
             hax.plot(Xtmp_SEclusters[:,1], Xtmp_SEclusters[:,0], 'o', color='gray', markerfacecolor='none', label='single-element "clusters"')
 
+        # print(res.cluster_infos)
+        for curr_c in res.cluster_infos:
+            # for correct z stacking: plot persistence traces first (would be better to plot *all* persistence traces first, then all current positions)
+            curr_color = curr_c.marker_color
+            if self.dl.has_data_for_tracepersistence():
+                # trace persistence only if data source can provided needed data (currently only for SQL DB)
+                self.cluster_plot_persistence(hax=hax, cluster_complete_data=res.data, cluster_labels=cluster_labels, id_cluster=curr_c.cluster_ID, trace_persistence=res.ag.device_trace_persistence, kwargs={'color':curr_color, 'alpha':0.5})
+            curr_cluster_center = self.cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=curr_c.cluster_ID, indicate_center=True, kwargs={'color':curr_color})
+            dist_km_saturated = np.maximum(0.1, np.minimum(curr_c.dist_km, 100)) # elementwise saturation (large values are capped; for small values some radius_minimum is displayed)
+            hax_p.plot(np.deg2rad(curr_c.initial_course),dist_km_saturated, 'o',color=curr_color)
+
+        """
         for id_cluster in sorted_cluster_ids:
             # if requested by user, ignore single-element 'clusters'
             curr_cluster_nele = dict(counts_cluster_labels)[id_cluster]
@@ -638,7 +657,7 @@ class MyPlotter:
             # for correct z stacking: plot persistence traces first (would be better to plot *all* persistence traces first, then all current positions)
             curr_color = next(iter_colors)
             if self.dl.has_data_for_tracepersistence():
-                # trace persistence currently only for data coming from SQL DB
+                # trace persistence only if data source can provided needed data (currently only for SQL DB)
                 self.cluster_plot_persistence(hax=hax, cluster_complete_data=res.data, cluster_labels=cluster_labels, id_cluster=id_cluster, trace_persistence=res.ag.device_trace_persistence, kwargs={'color':curr_color, 'alpha':0.5})
             curr_cluster_center = self.cluster_plot(hax=hax,cluster_data=X,cluster_labels=cluster_labels,id_cluster=id_cluster, indicate_center=True, kwargs={'color':curr_color})
             initial_course,dist_rad = get_nav(res.observer_pos, curr_cluster_center)
@@ -647,13 +666,14 @@ class MyPlotter:
             hax_p.plot(np.deg2rad(initial_course),dist_km_saturated, 'o',color=curr_color)
             #
             if store_ci:
-                curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, latitude=curr_cluster_center[0], longitude=curr_cluster_center[1], course=initial_course, dist=dist_km, marker_color_html=matplotlib.colors.to_hex(curr_color))
+                curr_ci = ClusterInfo(cluster_ID=id_cluster, N=curr_cluster_nele, latitude=curr_cluster_center[0], longitude=curr_cluster_center[1], course=initial_course, dist=dist_km, marker_color=curr_color)
                 self.cluster_infos.append(curr_ci)
                 print(curr_ci)
             #
             cluster_counter+=1
             if cluster_counter>=cfg['max_clusters']:
                 break
+        """
         #
         # plot finalization #1
         # (has to be done for ALL plots before call to 'plot_show_or_save')
@@ -712,7 +732,7 @@ class MyPlotter:
         self.fn['dendrogram'] = self.plot_show_or_save(fig, 'dendrogram')
 
         self.geoplot_cluster_analysis(res=res, only_local=False)
-        self.geoplot_cluster_analysis(res=res, only_local=True, store_ci=False)
+        self.geoplot_cluster_analysis(res=res, only_local=True)
 
         return {'files':self.fn, 'diag_info':self.diag_info, 'clusters':self.cluster_infos}
 

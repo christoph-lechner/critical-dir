@@ -16,7 +16,8 @@ def main():
     my_pos = [53.55, 10.0]
 
     # We use the "DB loader"
-    dt = datetime.datetime(2026,5,29, 20,50, tzinfo=ZoneInfo('Europe/Berlin'))
+    # dt = datetime.datetime(2026,5,29, 20,50, tzinfo=ZoneInfo('Europe/Berlin'))
+    dt = datetime.datetime(2026,5,29, 22,36, tzinfo=ZoneInfo('Europe/Berlin'))
     epoch = int(dt.timestamp())
     my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch)
     my_a = MyAnalyzer(dl=my_dl)

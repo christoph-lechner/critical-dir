@@ -40,7 +40,8 @@ Reasonable parameters may then be
 ### Examples
 | A | B |
 |---|---|
-{ ![](https://obj.clsrv.de/temp/IMG_1683_edited.png) | ![](https://obj.clsrv.de/temp/analysis__20260529T2050.png) |
+| ![](https://obj.clsrv.de/temp/IMG_1683_edited.png) | ![](https://obj.clsrv.de/temp/analysis__20260529T2050.png) |
+| ![](https://obj.clsrv.de/temp/IMG_1691_s.png) | ![](https://obj.clsrv.de/temp/analysis__20260529T2236.png) |
 
 ## Running It
 Once you have the database set up (adjust DB connection parameters in `db_conn.py` and test it using `check_db_conn.py`) and set up the DB using `schema.sql`, you can start to fill it using the API requestor `cmaps_data.py`.

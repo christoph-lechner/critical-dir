@@ -11,7 +11,7 @@ import numpy as np
 from pathlib import Path
 import datetime
 
-from w import MyAnalyzer,MyPlotter,DataLoaderDB,AlgoConfig
+from criticaldir_core import MyAnalyzer,MyPlotter,DataLoaderDB,AlgoConfig
 from db_conn import get_db_conn
 
 class ClustersResponseItem(BaseModel):

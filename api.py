@@ -233,6 +233,10 @@ async def inspect(clat: float, clong: float):
     html = f"<html><body><a href=/myapp/>For iPhone PWA: Back</a><p>Inspecting local distribution of riders around {clat:.4f},{clong:.4f}. Note that this plot does not indicate cluster infos, so all positions are indicated with same marker color.<img src=\"objs/{fn_img}\"></body></html>"
     return HTMLResponse(content=html)
 
+@app.get('/health')
+async def health():
+    return {'status':'healthy'}
+
 
 
 if __name__=="__main__":

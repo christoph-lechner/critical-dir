@@ -57,7 +57,7 @@ async def req_catch_all(request: Request):
 ### /location is the main workhorse, requests from WebApp for data on overview page go here ###
 ###############################################################################################
 
-def clusters_worker(*, ag):
+def clusters_worker(*, ag, min_cluster_size:int=3):
     # use DB for current positions
     my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
     my_a = MyAnalyzer(dl=my_dl)
@@ -66,9 +66,12 @@ def clusters_worker(*, ag):
     # print(res.cluster_infos)
 
     # To be JSON serializable, the returned object has to be an instance of the defined pydantic class.
-    # Some of the fields that come from the analysis process should be shadowed from the client, such as course/distance because at dummy user_position had to be provided
+    # Some of the fields that come from the analysis process should be shadowed from the client, such as course/distance because they were computed using the dummy user_position we had to provide
+    # Here we also filter out all small clusters
     r = []
     for ci in res.cluster_infos:
+        if ci.N<min_cluster_size:
+            continue
         r.append({'cluster_ID':ci.cluster_ID, 'center_latitude':ci.latitude, 'center_longitude':ci.longitude, 'N':ci.N})
     return r
 
@@ -159,14 +162,15 @@ def location_worker(user_pos, *, ag):
 def get_clusters():
     # for the demo, some hard-coded defaults
     ag = AlgoConfig(
-        exclude_isolated_points=False,    #True,
-        exclude_stationary_devices=False, #True, 
+        exclude_isolated_points=True,
+        exclude_stationary_devices=True, 
         cluster_dist_thres=1.0,
         device_trace_persistence=900
     )
-    clusters=clusters_worker(ag=ag)
+    clusters = clusters_worker(ag=ag, min_cluster_size=3)
     r = {
-        'info': 'parameters_for_the_cluster_analysis_go_here',
+        # only parameters influencing the result (we enforce min cluster size -> irrelevant if isolated points are excluded by clustering algorithm or no; not using any trace persistence here)
+        'info': f'd={ag.cluster_dist_thres}, s={ag.exclude_stationary_devices}',
         'clusters': clusters
     }
     # TODO: Ideas what should also be part of the response:

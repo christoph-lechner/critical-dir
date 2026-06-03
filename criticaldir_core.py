@@ -213,14 +213,26 @@ class DataLoaderDB(DataLoader):
 
 
 class DataLoaderTestData(DataLoader):
+    """
+    Note: test data is used for automatic testing of clustering algorithm, do not modify this class without considering impact on automatic tests.
+    """
     def __init__(self):
-        pass
+        self.id_datapoint = 0
+
+    def get_datapoint_id(self):
+        self.id_datapoint += 1
+        return self.id_datapoint
 
     def get_data(self, *, return_all_fields=True) -> list[dict]:
         def make_datapoint(lat,long):
-            return {'device':'1234', 'latitude':lat, 'longitude':long, 'timestamp':1}
-
-        print('*** INFO: generating test data set. Still have to implement unique "device IDs" ***')
+            return {
+                'device':str(self.get_datapoint_id()),
+                'latitude':lat,
+                'longitude':long,
+                'timestamp':1,
+                # 2026-06-03: add the in-motion flag to the test dataset as analysis algorithm breaks otherwise. This should be improved in the future because this flag is not in the original JSON format (FIXME?)
+                'flag_in_motion':1
+            }
 
         # Test data points on the equator (1 deg corresponds to: 2*pi*6371km/360 deg = 111.2 km/deg)
         data = [

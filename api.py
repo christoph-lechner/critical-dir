@@ -235,6 +235,10 @@ async def inspect(clat: float, clong: float):
 
 @app.get('/health')
 async def health():
+    """
+    At the moment this only verifies that server is reachable...
+    TODO/FIXME: add real health check, for instance do core algorithms work without raising exception?
+    """
     return {'status':'healthy'}
 
 

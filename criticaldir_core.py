@@ -35,7 +35,7 @@ from itertools import cycle
 # to have datatype returned by 'AgglomerativeClustering' process for definition of dataclass
 import sklearn
 
-@dataclass
+@dataclass(frozen=True)
 class ClusterInfo:
     cluster_ID: int
     latitude: float
@@ -49,10 +49,12 @@ class ClusterInfo:
     def table_header(self):
         # part of dervied dataclass to ensure that header and string representation of rows have matching layout
         return '<tr><td>(ID)</td><td>N</td><td>center</td><td>course [deg]</td><td>dist [km]</td><td><!-- for inspect link --></td></tr>'
+    def make_openstreetmap_url(self):
+        return f'https://www.openstreetmap.org/#map=14/{self.latitude:.2f}/{self.longitude:.2f}'
     def as_html(self):
         marker_color_html=matplotlib.colors.to_hex(self.marker_color)
         # replace by jinja template?
-        return f"<tr><td style=\"background-color: {marker_color_html}\">{self.cluster_ID}</td><td>{self.N}</td><td>{self.latitude:.2f}, {self.longitude:.2f}</td><td>{self.initial_course:.2f}</td><td>{self.dist_km:.2f}</td><td><a href=\"api/inspect?clat={self.latitude:.6f}&clong={self.longitude:.6f}\" target=\"_blank\">Inspect</a></td></tr>"
+        return f"<tr><td style=\"background-color: {marker_color_html}\">{self.cluster_ID}</td><td>{self.N}</td><td><a href=\"{self.make_openstreetmap_url()}\" target=\"_blank\">{self.latitude:.2f}, {self.longitude:.2f}</a></td><td>{self.initial_course:.2f}</td><td>{self.dist_km:.2f}</td><td><a href=\"api/inspect?clat={self.latitude:.6f}&clong={self.longitude:.6f}\" target=\"_blank\">Inspect</a></td></tr>"
 
 @dataclass(frozen=True)
 class AlgoConfig:

@@ -140,10 +140,11 @@ class DataLoaderDB(DataLoader):
         # A device is considered stationary if it did not report in the previous hour a single position outside of a circle around its last known position
         crit_stationary_radius = 100 # meters
 
-        # standard operation, temporal cutoff defined by most recent timestamp in database
+        # Dynamic generation of subquery, depending on operation mode (current or historic data)
+        # (1) standard operation, temporal cutoff defined by most recent timestamp in database
         subquery_cutoff = 'SELECT MAX(timestamp) AS timestamp_mostrecent FROM criticalmaps_data'
         if self.t0:
-            # special operation mode to look back at historic data
+            # (2) special operation mode to look back at historic data
             subquery_cutoff = f'SELECT {self.t0} AS timestamp_mostrecent'
 
         query_params = {
@@ -153,7 +154,6 @@ class DataLoaderDB(DataLoader):
             f"""
             WITH q_ts_cutoff AS (
                 -- SELECT MAX(timestamp) AS timestamp_mostrecent FROM criticalmaps_data
-                -- SELECT 1780239180 AS timestamp_mostrecent
                 { subquery_cutoff }
             ), qq AS (
                 SELECT
@@ -758,10 +758,15 @@ if __name__=='__main__':
     # load data from JSON file
     # r = main(f_dataloader=partial(dataloader_file, datafile='cmdata/data_20260528T100900_002729.json'), observer_pos=my_pos, exclude_isolated_points=False)
 
-    # default loader is DB loader
-    # my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=1780239180) # Sun., 31.05.2026, 16:53
-    # my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=1780080600) # Fri., 29.05.2026, 20:50
-    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=1780076700) # Fri., 29.05.2026, 19:45
+
+    # We use the "DB loader"
+    # Other interesting timestamps are
+    # - UNIX epoch=1780239180, Sun., 31.05.2026, 16:53
+    # - UNIX epoch=1780080600, Fri., 29.05.2026, 20:50
+    from zoneinfo import ZoneInfo
+    dt = datetime.datetime(2026,5,29, 19,45, tzinfo=ZoneInfo('Europe/Berlin'))
+    epoch = int(dt.timestamp())
+    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch)
     my_a = MyAnalyzer(dl=my_dl)
     res = my_a.perform_analysis(
         observer_pos=my_pos,

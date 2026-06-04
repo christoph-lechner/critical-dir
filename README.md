@@ -44,7 +44,19 @@ Reasonable parameters may then be
 | ![](https://obj.clsrv.de/temp/IMG_1691_s.png) | ![](https://obj.clsrv.de/temp/analysis__20260529T2236.png) |
 
 ## Running It
-Once you have the database set up (adjust DB connection parameters in `db_conn.py` and test it using `check_db_conn.py`) and set up the DB using `schema.sql`, you can start to fill it using the API requestor `cmaps_data.py`.
+### Installation
+Installation in fresh virtual environment using commands:
+```
+$ python3 -m venv ./venv/
+$ source ./venv/bin/activate
+$ pip3 install -e .
+[...]
+```
+
+Configuration of database access is done by adjusting the connection parameters in `./env` (you can test them using `check_db_conn.py`). Then proceed and prepare the DB using `schema.sql`.
+
+### Running it
+Then you can start to fill the database by running the API requestor `critical-dir-apiimport`. It periodically connects to the CriticalMaps API endpoint and stores the received information both in `.json` files and in the database.
 
 For analysis of the stored data, there are currently two ways to run the software:
 * for development, run the script `interactive_demo.py` on the command line
@@ -70,7 +82,7 @@ The position data processed by this software project is periodically obtained fr
 The downloader supports HTTP Health Monitoring.
 Pass the desired port to listen on to the program at start-up:
 ```
-./cmaps_data.py --status_port=22222
+critical-dir-apiimport --status_port=22222
 ```
 
 To check the health status of the data downloader, you can use `curl`.

@@ -152,7 +152,7 @@ def t_download_worker(*,stop_event, f_heartbeat: Callable=None):
 
     settings = get_settings()
 
-    def get_fn():
+    def get_fn(*, fn_extension:str='json'):
         tnow = datetime.datetime.now()
         tdatestr = tnow.strftime('%Y%m%d')
         tnowstr = tnow.strftime('%Y%m%dT%H%M%S_%f') # '%f' is always 6 digits wide and padded w/ leading zeros
@@ -160,7 +160,15 @@ def t_download_worker(*,stop_event, f_heartbeat: Callable=None):
         datadir = settings.api_downloader_json_outdir / tdatestr
         datadir.mkdir(parents=False, exist_ok=True)
         # return filename
-        return datadir / ('data_'+tnowstr+'.json')
+        return datadir / ('data_'+tnowstr+'.'+fn_extension)
+
+    def put_info_file(txt, *, dupl_to_stdout=False):
+        if dupl_to_stdout:
+            print(txt)
+        fn = get_fn(fn_extension='txt')
+        print(f'going to write infos to file {fn}')
+        with open(fn,'w') as fout:
+            fout.write(txt)
 
     if f_heartbeat:
         if not callable(f_heartbeat):
@@ -188,7 +196,7 @@ def t_download_worker(*,stop_event, f_heartbeat: Callable=None):
             data = get_cmaps_data()
             with open(fn_out,'w') as fout:
                 fout.write(data)
-
+            
             # Heartbeat signaling everything is OK. The data was written stored in a file, so even if the following DB ingestion fails, we have the data.
             if f_heartbeat:
                 f_heartbeat()
@@ -198,7 +206,7 @@ def t_download_worker(*,stop_event, f_heartbeat: Callable=None):
             # Design idea to be implemented: Networking issues while getting the data are ok (this would also include any "bad" HTTP status codes such as 500),
             # consider to re-raise file I/O issues to stop the program (but then a watchdog has to start another instance so that data acquisition goes on)
             print('*** Data download resulted in exception ***')
-            print(traceback.format_exc())
+            put_info_file(traceback.format_exc(), dupl_to_stdout=True)
             continue
 
         # DB operations are in second try/catch block to make the program more robust (for instance if a single operation fails for whatever reason)
@@ -227,7 +235,7 @@ def t_download_worker(*,stop_event, f_heartbeat: Callable=None):
             conn.commit()
         except Exception as e:
             print('*** DB operations resulted in exception ***')
-            print(traceback.format_exc())
+            put_info_file(traceback.format_exc(), dupl_to_stdout=True)
             continue
 
 

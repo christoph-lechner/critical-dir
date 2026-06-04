@@ -1,7 +1,8 @@
 import psycopg
-from .settings import settings
+from .settings import get_settings
 
 def get_db_conn():
+    settings = get_settings()
     # Configure DSN via environment variable (see file ".env")
     #
     # Password in ~/.pgpass, line format

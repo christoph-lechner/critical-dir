@@ -16,7 +16,7 @@ from psycopg.rows import dict_row
 from critical_dir.db_conn import get_db_conn
 from critical_dir.cmaps_util import load_cmap_jsonfile
 
-from critical_dir.settings import settings
+from critical_dir.settings import get_settings
 
 """
 Configuration of data output directory via environment variable
@@ -149,6 +149,8 @@ def t_download_worker(*,stop_event, f_heartbeat: Callable=None):
             deltat = tnext - datetime.datetime.now()
             deltat = deltat.total_seconds()
         return False
+
+    settings = get_settings()
 
     def get_fn():
         tnow = datetime.datetime.now()

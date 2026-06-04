@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from criticaldir_core import MyAnalyzer,MyPlotter,DataLoaderTestData,AlgoConfig
+from critical_dir.criticaldir_core import MyAnalyzer,MyPlotter,DataLoaderTestData,AlgoConfig
 
 def run_test(ag: AlgoConfig):
     """

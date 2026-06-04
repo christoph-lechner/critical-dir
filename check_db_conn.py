@@ -3,7 +3,7 @@
 # Test connection to postgreSQL database
 
 # If needed adjust connection parameters in this function:
-from db_conn import get_db_conn
+from critical_dir.db_conn import get_db_conn
 
 def testconn():
     print('Connecting to DB ...')

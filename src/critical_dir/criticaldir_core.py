@@ -22,14 +22,14 @@ from dataclasses import dataclass
 from abc import ABC, abstractmethod
 import geopandas as gpd
 from functools import partial
-from nav import get_nav
-from my_util_files import get_list_of_files
-from cmaps_util import load_cmap_jsonfile
+from .nav import get_nav
+from .my_util_files import get_list_of_files
+from .cmaps_util import load_cmap_jsonfile
 import psycopg
 from psycopg.rows import dict_row
-from db_conn import get_db_conn
 import datetime
 from itertools import cycle
+from .db_conn import get_db_conn
 
 
 # to have datatype returned by 'AgglomerativeClustering' process for definition of dataclass

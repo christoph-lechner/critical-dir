@@ -1,0 +1,30 @@
+[project]
+name = "critical_dir"
+version = "0.1.0"
+license = " AGPL-3.0-only"
+license-files = ["LICENSE"]
+dependencies = [
+    "pytest",
+    "numpy",
+    "matplotlib",
+    "scipy",
+    "scikit-learn",
+    "geopandas",
+    "uvicorn",
+    "fastapi",
+    "requests",
+    "psycopg[binary,pool]",
+]
+
+[build-system]
+requires = ["setuptools>=65"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

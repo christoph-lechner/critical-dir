@@ -3,6 +3,7 @@ numpy
 matplotlib
 scipy
 scikit-learn
+geopandas
 uvicorn
 fastapi
 requests

@@ -35,7 +35,7 @@ from itertools import cycle
 # to have datatype returned by 'AgglomerativeClustering' process for definition of dataclass
 import sklearn
 
-@dataclass
+@dataclass(frozen=True)
 class ClusterInfo:
     cluster_ID: int
     latitude: float
@@ -49,10 +49,12 @@ class ClusterInfo:
     def table_header(self):
         # part of dervied dataclass to ensure that header and string representation of rows have matching layout
         return '<tr><td>(ID)</td><td>N</td><td>center</td><td>course [deg]</td><td>dist [km]</td><td><!-- for inspect link --></td></tr>'
+    def make_openstreetmap_url(self):
+        return f'https://www.openstreetmap.org/#map=14/{self.latitude:.2f}/{self.longitude:.2f}'
     def as_html(self):
         marker_color_html=matplotlib.colors.to_hex(self.marker_color)
         # replace by jinja template?
-        return f"<tr><td style=\"background-color: {marker_color_html}\">{self.cluster_ID}</td><td>{self.N}</td><td>{self.latitude:.2f}, {self.longitude:.2f}</td><td>{self.initial_course:.2f}</td><td>{self.dist_km:.2f}</td><td><a href=\"api/inspect?clat={self.latitude:.6f}&clong={self.longitude:.6f}\" target=\"_blank\">Inspect</a></td></tr>"
+        return f"<tr><td style=\"background-color: {marker_color_html}\">{self.cluster_ID}</td><td>{self.N}</td><td><a href=\"{self.make_openstreetmap_url()}\" target=\"_blank\">{self.latitude:.2f}, {self.longitude:.2f}</a></td><td>{self.initial_course:.2f}</td><td>{self.dist_km:.2f}</td><td><a href=\"api/inspect?clat={self.latitude:.6f}&clong={self.longitude:.6f}\" target=\"_blank\">Inspect</a></td></tr>"
 
 @dataclass(frozen=True)
 class AlgoConfig:
@@ -211,14 +213,26 @@ class DataLoaderDB(DataLoader):
 
 
 class DataLoaderTestData(DataLoader):
+    """
+    Note: test data is used for automatic testing of clustering algorithm, do not modify this class without considering impact on automatic tests.
+    """
     def __init__(self):
-        pass
+        self.id_datapoint = 0
+
+    def get_datapoint_id(self):
+        self.id_datapoint += 1
+        return self.id_datapoint
 
     def get_data(self, *, return_all_fields=True) -> list[dict]:
         def make_datapoint(lat,long):
-            return {'device':'1234', 'latitude':lat, 'longitude':long, 'timestamp':1}
-
-        print('*** INFO: generating test data set. Still have to implement unique "device IDs" ***')
+            return {
+                'device':str(self.get_datapoint_id()),
+                'latitude':lat,
+                'longitude':long,
+                'timestamp':1,
+                # 2026-06-03: add the in-motion flag to the test dataset as analysis algorithm breaks otherwise. This should be improved in the future because this flag is not in the original JSON format (FIXME?)
+                'flag_in_motion':1
+            }
 
         # Test data points on the equator (1 deg corresponds to: 2*pi*6371km/360 deg = 111.2 km/deg)
         data = [

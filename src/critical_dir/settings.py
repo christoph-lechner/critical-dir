@@ -4,6 +4,7 @@ from pathlib import Path
 
 class Settings(BaseSettings):
     pg_dsn: PostgresDsn
+    datatable: str = 'criticalmaps_data'
 
     img_dir: Path
     api_downloader_json_outdir: Path

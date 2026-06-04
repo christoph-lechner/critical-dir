@@ -7,19 +7,22 @@ import threading
 import argparse
 from threading import Event
 from pathlib import Path
-from cmaps_api import get_cmaps_data
+import traceback
+from collections.abc import Callable
+from critical_dir.cmaps_api import get_cmaps_data
 
 import psycopg
 from psycopg.rows import dict_row
-from db_conn import get_db_conn
-from cmaps_util import load_cmap_jsonfile
+from critical_dir.db_conn import get_db_conn
+from critical_dir.cmaps_util import load_cmap_jsonfile
 
+from critical_dir.settings import settings
 
+"""
+Configuration of data output directory via environment variable
+"""
 
 cfg = {
-    # data goes here (specify absolute paths!)
-    'datadir': Path('/home/cl/work/criticalmaps--richtungspfeil/cmdata/'),
-
     # For HTTP-based health checking (if enabled). Age of last event seen that is still "good". Note that this cannot be changed at runtime.
     'healthcheck_maxage': 900,
 }
@@ -35,7 +38,7 @@ args = parser.parse_args()
 
 if args.status_port:
     # import here: break early when there are missing dependencies
-    from healthcheck import Healthcheck
+    from critical_dir.healthcheck import Healthcheck
 
 # based on loader_radverkehr.py
 # data schema, without _h field (to be added as part of loading process), without ts_entry_creating
@@ -125,7 +128,7 @@ def sighandler_term(signum, frame):
 
 #####
 
-def t_download_worker(*,stop_event):
+def t_download_worker(*,stop_event, f_heartbeat: Callable=None):
     def ceil_min(dt):
         return dt.replace(second=0, microsecond=0) + datetime.timedelta(minutes=1)
     def wait_until(dt):
@@ -149,8 +152,17 @@ def t_download_worker(*,stop_event):
 
     def get_fn():
         tnow = datetime.datetime.now()
+        tdatestr = tnow.strftime('%Y%m%d')
         tnowstr = tnow.strftime('%Y%m%dT%H%M%S_%f') # '%f' is always 6 digits wide and padded w/ leading zeros
-        return cfg['datadir'] / ('data_'+tnowstr+'.json')
+        # create data directory if needed (using per-day directories for better file organization)
+        datadir = settings.api_downloader_json_outdir / tdatestr
+        datadir.mkdir(parents=False, exist_ok=True)
+        # return filename
+        return datadir / ('data_'+tnowstr+'.json')
+
+    if f_heartbeat:
+        if not callable(f_heartbeat):
+            raise ValueError('if specified, value has to be "callable"')
 
     # establish DB connection
     # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
@@ -159,6 +171,7 @@ def t_download_worker(*,stop_event):
 
     # schedule first request to happen at the start of the next minute
     tnext = ceil_min( datetime.datetime.now() )
+    print(f'About to enter main loop, first API access scheduled for {tnext}')
     while True:
         wait_until(tnext)
         tnext = tnext + datetime.timedelta(seconds=30)
@@ -175,8 +188,10 @@ def t_download_worker(*,stop_event):
                 fout.write(data)
 
             # Heartbeat signaling everything is OK. The data was written stored in a file, so even if the following DB ingestion fails, we have the data.
-            if status['healthcheck']:
-                status['healthcheck'].heartbeat()
+            if f_heartbeat:
+                f_heartbeat()
+            #if status['healthcheck']:
+            #    status['healthcheck'].heartbeat()
         except Exception as e:
             # Design idea to be implemented: Networking issues while getting the data are ok (this would also include any "bad" HTTP status codes such as 500),
             # consider to re-raise file I/O issues to stop the program (but then a watchdog has to start another instance so that data acquisition goes on)
@@ -184,7 +199,7 @@ def t_download_worker(*,stop_event):
             print(traceback.format_exc())
             continue
 
-        # DB operations are in second try/catch block to make the program more robust (for instance of a single operation fails for whatever reason)
+        # DB operations are in second try/catch block to make the program more robust (for instance if a single operation fails for whatever reason)
         # TODO: add provisions for DB connection going down.
         try:
             # create unique names for data staging steps
@@ -205,7 +220,7 @@ def t_download_worker(*,stop_event):
 
             data_add_hashes(cur, stg_table_hashed, stg_table)
             data_dedupl(cur, stg_table_dedupl, stg_table_hashed)
-            data_merge(cur, data_table='criticalmaps_data', stg_table=stg_table_dedupl)
+            data_merge(cur, data_table=settings.datatable, stg_table=stg_table_dedupl)
 
             conn.commit()
         except Exception as e:
@@ -214,8 +229,15 @@ def t_download_worker(*,stop_event):
             continue
 
 
-def main():
-    t_dl = threading.Thread(target=t_download_worker, kwargs={'stop_event':stop_event})
+def mainloop(*, status):
+    t_kw = {'stop_event':stop_event}
+    if status['healthcheck']:
+        f_heartbeat = status['healthcheck'].heartbeat
+        # Only passing on function that signals heartbeat (and not the entire data structure!),
+        # because the only thing this function does is to manipulate a thread-safe object
+        t_kw['f_heartbeat'] = f_heartbeat
+
+    t_dl = threading.Thread(target=t_download_worker, kwargs=t_kw)
     t_dl.start()
 
     while True:
@@ -232,7 +254,7 @@ def main():
 
     return
 
-if __name__=='__main__':
+def main():
     status={}
     status['healthcheck'] = None
     if args.status_port:
@@ -248,5 +270,7 @@ if __name__=='__main__':
     signal.signal(signal.SIGTERM, sighandler_term)
     signal.signal(signal.SIGINT,  sighandler_term)
 
+    mainloop(status=status)
 
+if __name__=='__main__':
     main()

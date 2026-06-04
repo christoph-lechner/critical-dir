@@ -48,7 +48,7 @@ Once you have the database set up (adjust DB connection parameters in `db_conn.p
 
 For analysis of the stored data, there are currently two ways to run the software:
 * for development, run the script `interactive_demo.py` on the command line
-* to run the API server, run `api.py` (see elsewhere in this document for documentation of URI layout)
+* to run the API server, run `critical-dir-api` (see elsewhere in this document for documentation of URI layout)
 
 ### Organization of URIs
 Currently the URIs on the HTTPS Apache2 server are organized as follows:

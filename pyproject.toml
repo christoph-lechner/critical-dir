@@ -16,6 +16,9 @@ dependencies = [
     "psycopg[binary,pool]",
 ]
 
+[project.scripts]
+critical-dir-api = "critical_dir.api:main"
+
 [build-system]
 requires = ["setuptools>=65"]
 build-backend = "setuptools.build_meta"

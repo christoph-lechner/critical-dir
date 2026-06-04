@@ -241,11 +241,12 @@ async def health():
     """
     return {'status':'healthy'}
 
-
-
-if __name__=="__main__":
+def main():
     uvicorn.run(
         app,
         host='0.0.0.0', port=8777,
         server_header=False, # <- don't send "server: uvicorn" in response
     )
+
+if __name__=="__main__":
+    main()

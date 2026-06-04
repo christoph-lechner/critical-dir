@@ -2,8 +2,8 @@
 
 import datetime
 from zoneinfo import ZoneInfo
-from criticaldir_core import MyAnalyzer,MyPlotter,DataLoaderDB,AlgoConfig
-from db_conn import get_db_conn
+from critical_dir.criticaldir_core import MyAnalyzer,MyPlotter,DataLoaderDB,AlgoConfig
+from critical_dir.db_conn import get_db_conn
 
 def main():
     # fixed dummy position in Hamburg for dev purposes

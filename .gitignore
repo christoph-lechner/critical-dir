@@ -1,2 +1,7 @@
+# .env files may contain sensitive infos, such as credentials
+.env
+
 # ignore .png files written by the tool
 objs/**
+
+**/__pycache__/

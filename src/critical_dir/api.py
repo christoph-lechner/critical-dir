@@ -11,8 +11,8 @@ import numpy as np
 from pathlib import Path
 import datetime
 
-from criticaldir_core import MyAnalyzer,MyPlotter,DataLoaderDB,AlgoConfig
-from db_conn import get_db_conn
+from critical_dir.criticaldir_core import MyAnalyzer,MyPlotter,DataLoaderDB,AlgoConfig
+from critical_dir.db_conn import get_db_conn
 
 class ClustersResponseItem(BaseModel):
     cluster_ID: int
@@ -241,11 +241,12 @@ async def health():
     """
     return {'status':'healthy'}
 
-
-
-if __name__=="__main__":
+def main():
     uvicorn.run(
         app,
         host='0.0.0.0', port=8777,
         server_header=False, # <- don't send "server: uvicorn" in response
     )
+
+if __name__=="__main__":
+    main()

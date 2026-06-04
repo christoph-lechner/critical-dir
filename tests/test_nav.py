@@ -1,5 +1,5 @@
 import numpy as np
-from nav import get_initial_course,get_dist_radians
+from critical_dir.nav import get_initial_course,get_dist_radians
 
 """
 Helper function and related testing

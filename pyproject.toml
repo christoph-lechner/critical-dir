@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 critical-dir-api = "critical_dir.api:main"
+critical-dir-apiimport = "critical_dir.cmaps_api_import:main"
 
 [build-system]
 requires = ["setuptools>=65"]

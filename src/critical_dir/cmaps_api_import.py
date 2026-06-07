@@ -45,8 +45,8 @@ if args.status_port:
 datacol_ddl = \
 """
     deviceid TEXT,
-    longitude FLOAT,
     latitude FLOAT,
+    longitude FLOAT,
     timestamp INT
 """
 def prepare_stg_table(cur, stg_table):
@@ -74,7 +74,7 @@ def data_add_hashes(cur, stg_dest, stg_src):
         CREATE TEMPORARY TABLE {stg_dest} AS (
             SELECT
                 MD5(CONCAT(CONCAT(deviceid,'_'),'-',CONCAT(timestamp,'_'))) AS _h,
-                deviceid,longitude,latitude,timestamp
+                deviceid,latitude,longitude,timestamp
             FROM {stg_src}
         );
         """
@@ -86,11 +86,12 @@ def data_dedupl(cur, stg_dest, stg_src):
             CREATE TEMPORARY TABLE {stg_dest} AS
             WITH q AS (
                 SELECT
-                    *, ROW_NUMBER() OVER(PARTITION BY _h) AS _rn
+                    _h,deviceid,latitude,longitude,timestamp,
+                    ROW_NUMBER() OVER(PARTITION BY _h) AS _rn
                 FROM {stg_src}
             )
             SELECT
-                _h,deviceid,longitude,latitude,timestamp
+                _h,deviceid,latitude,longitude,timestamp
             FROM q
             WHERE _rn=1;
         """
@@ -110,9 +111,9 @@ def data_merge(cur, *, data_table, stg_table):
         ON
             dst._h=src._h
         WHEN MATCHED THEN
-            UPDATE SET deviceid=src.deviceid, longitude=src.longitude, latitude=src.latitude, timestamp=src.timestamp
+            UPDATE SET deviceid=src.deviceid, latitude=src.latitude, longitude=src.longitude, timestamp=src.timestamp
         WHEN NOT MATCHED THEN
-            INSERT VALUES (_h,deviceid,longitude,latitude,timestamp);
+            INSERT VALUES (_h,deviceid,latitude,longitude,timestamp);
         """
     )
     return cur.rowcount
@@ -174,12 +175,10 @@ def t_download_worker(*,stop_event, f_heartbeat: Callable=None):
         if not callable(f_heartbeat):
             raise ValueError('if specified, value has to be "callable"')
 
-    # establish DB connection (just a test to check credentials)
+    # establish DB connection
     # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
     conn = get_db_conn()
     cur = conn.cursor(row_factory=dict_row)
-    cur.close()
-    conn.close()
 
     # schedule first request to happen at the start of the next minute
     tnext = ceil_min( datetime.datetime.now() )
@@ -221,18 +220,13 @@ def t_download_worker(*,stop_event, f_heartbeat: Callable=None):
             stg_table_hashed = stg_table + '_h'
             stg_table_dedupl = stg_table + '_d'
 
-            # establish DB connection
-            # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
-            conn = get_db_conn()
-            cur = conn.cursor(row_factory=dict_row)
-
             # prepare staging table
             data,_ = load_cmap_jsonfile(fn_out)
             prepare_stg_table(cur, stg_table)
             for d in data:
                 cur.execute(
-                    'INSERT INTO ' +stg_table+ ' (deviceid,longitude,latitude,timestamp) VALUES (%s,%s,%s,%s)',
-                    (d['device'],d['longitude'],d['latitude'],d['timestamp'])
+                    'INSERT INTO ' +stg_table+ ' (deviceid,latitude,longitude,timestamp) VALUES (%s,%s,%s,%s)',
+                    (d['device'], d['latitude'], d['longitude'], d['timestamp'])
                 )
 
             data_add_hashes(cur, stg_table_hashed, stg_table)
@@ -240,8 +234,6 @@ def t_download_worker(*,stop_event, f_heartbeat: Callable=None):
             data_merge(cur, data_table=settings.datatable, stg_table=stg_table_dedupl)
 
             conn.commit()
-            cur.close()
-            conn.close()
         except Exception as e:
             print('*** DB operations resulted in exception ***')
             put_info_file(traceback.format_exc(), dupl_to_stdout=True)

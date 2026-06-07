@@ -13,6 +13,7 @@ import datetime
 
 from critical_dir.criticaldir_core import MyAnalyzer,MyPlotter,DataLoaderDB,AlgoConfig
 from critical_dir.db_conn import get_db_conn
+from critical_dir.settings import get_settings
 
 class ClustersResponseItem(BaseModel):
     cluster_ID: int
@@ -85,11 +86,12 @@ def location_worker(user_pos, *, ag):
 
     # use DB for current positions
     my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
-    my_a = MyAnalyzer(dl=my_dl, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix)
+    settings = get_settings()
+    my_a = MyAnalyzer(dl=my_dl, obj_path=settings.img_dir, fprefix=fprefix)
     res = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
     my_p = MyPlotter(
         dl=my_dl,
-        obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix
+        obj_path=settings.img_dir, fprefix=fprefix
     )
     r = my_p.doit(res=res)
 
@@ -222,10 +224,10 @@ async def inspect(clat: float, clong: float):
 
     fn_img = inspect_worker(lat=clat, long=clong)
     my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
-    my_a = MyAnalyzer(dl=my_dl, obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix)
+    my_a = MyAnalyzer(dl=my_dl, obj_path=settings.img_dir, fprefix=fprefix)
     my_p = MyPlotter(
         dl=my_dl,
-        obj_path=Path('/home/cl/work/criticalmaps--richtungspfeil/objs/'), fprefix=fprefix
+        obj_path=settings.img_dir, fprefix=fprefix
     )
     r = my_p.inspect_generate_img(observer_pos=[clat,clong], ag=AlgoConfig())
 

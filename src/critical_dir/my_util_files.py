@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 import datetime
 from pathlib import Path
+from critical_dir.settings import get_settings
 
 @dataclass
 class FileInfo:
@@ -54,7 +55,8 @@ def identify_most_recent_file(datadir, *, n=1):
     return lof[0]
 
 def main():
-    datadir = Path('/home/cl/work/criticalmaps--richtungspfeil/cmdata')
+    settings = get_settings()
+    datadir = Path(settings.api_downloader_json_outdir)
     print(identify_most_recent_file(datadir, n=2))
 
 if __name__=='__main__':

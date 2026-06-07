@@ -222,6 +222,7 @@ async def inspect(clat: float, clong: float):
     tstr = tnow.strftime('%Y%m%dT%H%M%S.%f')
     fprefix = f'img_{tstr}_'
 
+    settings = get_settings()
     fn_img = inspect_worker(lat=clat, long=clong)
     my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
     my_a = MyAnalyzer(dl=my_dl, obj_path=settings.img_dir, fprefix=fprefix)

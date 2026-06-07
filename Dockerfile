@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
 
 # TODO: replace by git clone from github
 COPY . /app
-RUN rm /app/.env
+RUN rm -f /app/.env
 
 RUN pip3 install --no-cache-dir --upgrade pip
 RUN pip3 install --no-cache-dir -e .

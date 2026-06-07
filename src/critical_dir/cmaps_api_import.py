@@ -174,10 +174,12 @@ def t_download_worker(*,stop_event, f_heartbeat: Callable=None):
         if not callable(f_heartbeat):
             raise ValueError('if specified, value has to be "callable"')
 
-    # establish DB connection
+    # establish DB connection (just a test to check credentials)
     # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
     conn = get_db_conn()
     cur = conn.cursor(row_factory=dict_row)
+    cur.close()
+    conn.close()
 
     # schedule first request to happen at the start of the next minute
     tnext = ceil_min( datetime.datetime.now() )
@@ -219,6 +221,11 @@ def t_download_worker(*,stop_event, f_heartbeat: Callable=None):
             stg_table_hashed = stg_table + '_h'
             stg_table_dedupl = stg_table + '_d'
 
+            # establish DB connection
+            # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
+            conn = get_db_conn()
+            cur = conn.cursor(row_factory=dict_row)
+
             # prepare staging table
             data,_ = load_cmap_jsonfile(fn_out)
             prepare_stg_table(cur, stg_table)
@@ -233,6 +240,8 @@ def t_download_worker(*,stop_event, f_heartbeat: Callable=None):
             data_merge(cur, data_table=settings.datatable, stg_table=stg_table_dedupl)
 
             conn.commit()
+            cur.close()
+            conn.close()
         except Exception as e:
             print('*** DB operations resulted in exception ***')
             put_info_file(traceback.format_exc(), dupl_to_stdout=True)

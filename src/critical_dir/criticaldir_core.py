@@ -25,6 +25,7 @@ from functools import partial
 from .nav import get_nav
 from .my_util_files import get_list_of_files
 from .cmaps_util import load_cmap_jsonfile
+from .exceptions import EInsufficientData, ENoData
 import psycopg
 from psycopg.rows import dict_row
 import datetime
@@ -351,8 +352,10 @@ class MyAnalyzer:
         # -> May not be needed, because AgglomerativeClustering supports metric='haversine' out-of-the-box.
         #    But keeping it because it helps to understand what the cluster algorithm did
         #####
-        if len(data)<2:
-            raise ValueError(f'Clustering requires at least 2 data points, got {len(data)}') # FIXME: implement better solution that also sends the info what happened to the Web/API User
+        if len(data)==0:
+            raise ENoData('')
+        elif len(data)<2:
+            raise EInsufficientData(f'Clustering requires at least 2 data points, got {len(data)}')
         X = generate_input_for_clusteralgo(data)
         # for the clustering algorithm, we need long/lat in radians
         Xrad = np.radians(X)

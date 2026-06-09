@@ -1,0 +1,16 @@
+services:
+  cm-downloader-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: on-failure
+    # in file '.env'
+    # - CRITICAL_DIR_PG_DSN
+    # - CRITICAL_DIR_DATATABLE
+    # - CRITICAL_DIR_IMG_DIR
+    # - CRITICAL_DIR_API_DOWNLOADER_JSON_OUTDIR
+    env_file: .env_for_dockertest
+    volumes:
+      - "./test/cmdata:/app/cmdata"
+    ports:
+      - 8080:8080

@@ -212,9 +212,6 @@ def update_location(payload: LocationRequest):
     return location_worker(user_pos, ag=ag)
 
 
-def inspect_worker(lat: float, long: float) -> str:
-    return 'hallo'
-
 @app.get('/inspect', response_class=HTMLResponse)
 async def inspect(clat: float, clong: float):
     # generate "unique" prefix for image files
@@ -223,7 +220,6 @@ async def inspect(clat: float, clong: float):
     fprefix = f'img_{tstr}_'
 
     settings = get_settings()
-    fn_img = inspect_worker(lat=clat, long=clong)
     my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
     my_a = MyAnalyzer(dl=my_dl, obj_path=settings.img_dir, fprefix=fprefix)
     my_p = MyPlotter(
@@ -236,12 +232,34 @@ async def inspect(clat: float, clong: float):
     html = f"<html><body><a href=/myapp/>For iPhone PWA: Back</a><p>Inspecting local distribution of riders around {clat:.4f},{clong:.4f}. Note that this plot does not indicate cluster infos, so all positions are indicated with same marker color.<img src=\"objs/{fn_img}\"></body></html>"
     return HTMLResponse(content=html)
 
+def check_db_freshness(*, max_age = 900):
+    """
+    Optional arguments: maximum age in seconds.
+    If data is older, this is considered an error.
+    """
+    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
+    max_timestamp = my_dl.get_data_newest_timestamp()
+    epoch_now = datetime.datetime.now().timestamp()
+    deltat = epoch_now - max_timestamp
+
+    # Catch any timestamps from the "future". Or the system clock is off...
+    if deltat<0:
+        raise ValueError('Most recent timestamp is newer than current time on server.')
+
+    print(f'dbg: deltat={deltat}')
+    is_fresh = deltat<max_age
+    return is_fresh
+
 @app.get('/health')
 async def health():
     """
     At the moment this only verifies that server is reachable...
     TODO/FIXME: add real health check, for instance do core algorithms work without raising exception?
+    TODO: Convert into function returning HTML response and HTTP 200 if everything is ok.
     """
+    is_fresh = check_db_freshness()
+    print(f'DB freshness --> {is_fresh}')
+
     return {'status':'healthy'}
 
 def main():

@@ -28,6 +28,7 @@ def main():
     res = cur.fetchall()
     data_lat  = [_['latitude'] for _ in res]
     data_long = [_['longitude'] for _ in res]
+    print(f'Info: got {len(data_lat)} data points')
 
     coastlines = gpd.read_file('ne_110m_coastline.zip')
 

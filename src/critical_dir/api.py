@@ -246,11 +246,11 @@ def check_db_freshness(*, max_age = 900):
     if deltat<0:
         raise ValueError('Most recent timestamp is newer than current time on server.')
 
-    print(f'dbg: deltat={deltat}')
+    # print(f'dbg: deltat={deltat}')
     is_fresh = deltat<max_age
     return is_fresh
 
-@app.get('/health')
+@app.get('/health', response_class=HTMLResponse)
 async def health():
     """
     At the moment this only verifies that server is reachable...
@@ -258,9 +258,16 @@ async def health():
     TODO: Convert into function returning HTML response and HTTP 200 if everything is ok.
     """
     is_fresh = check_db_freshness()
-    print(f'DB freshness --> {is_fresh}')
+    # print(f'DB freshness --> {is_fresh}')
 
-    return {'status':'healthy'}
+    # TODO: Currently NOT running a test of the cluster algorithm as it can take a few seconds. One trade-off could be to cache the result of cluster algorithm for (for instance) 15 minutes.
+    
+    is_ok = is_fresh
+    if is_ok:
+        return HTMLResponse('OK')
+
+    r = HTMLResponse('not OK', status_code=500)
+    return r
 
 def main():
     uvicorn.run(

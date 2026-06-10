@@ -52,10 +52,14 @@ class ClusterInfo:
         return '<tr><td>(ID)</td><td>N</td><td>center</td><td>course [deg]</td><td>dist [km]</td><td><!-- for inspect link --></td></tr>'
     def make_openstreetmap_url(self):
         return f'https://www.openstreetmap.org/#map=14/{self.latitude:.2f}/{self.longitude:.2f}'
-    def as_html(self):
+    def as_html(self, *, with_inspect_link=True):
         marker_color_html=matplotlib.colors.to_hex(self.marker_color)
+
         # replace by jinja template?
-        return f"<tr><td style=\"background-color: {marker_color_html}\">{self.cluster_ID}</td><td>{self.N}</td><td><a href=\"{self.make_openstreetmap_url()}\" target=\"_blank\">{self.latitude:.2f}, {self.longitude:.2f}</a></td><td>{self.initial_course:.2f}</td><td>{self.dist_km:.2f}</td><td><a href=\"api/inspect?clat={self.latitude:.6f}&clong={self.longitude:.6f}\" target=\"_blank\">Inspect</a></td></tr>"
+        inspect_link = '' # default: do not emit "inspect" link
+        if with_inspect_link:
+            inspect_link = f'<a href="api/inspect?clat={self.latitude:.6f}&clong={self.longitude:.6f}" target="_blank">Inspect</a>'
+        return f"<tr><td style=\"background-color: {marker_color_html}\">{self.cluster_ID}</td><td>{self.N}</td><td><a href=\"{self.make_openstreetmap_url()}\" target=\"_blank\">{self.latitude:.2f}, {self.longitude:.2f}</a></td><td>{self.initial_course:.2f}</td><td>{self.dist_km:.2f}</td><td>{inspect_link}</td></tr>"
 
 @dataclass(frozen=True)
 class AlgoConfig:

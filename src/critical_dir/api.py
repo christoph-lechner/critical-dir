@@ -68,7 +68,8 @@ def clusters_worker(*, ag, min_cluster_size:int=3):
 
     # To be JSON serializable, the returned object has to be an instance of the defined pydantic class.
     # Some of the fields that come from the analysis process should be shadowed from the client, such as course/distance because they were computed using the dummy user_position we had to provide
-    # Here we also filter out all small clusters
+    # Only clusters exceeding a minimum number of members are returned to the
+    # user to prevent exposing individual positions.
     r = []
     for ci in res.cluster_infos:
         if ci.N<min_cluster_size:
@@ -84,11 +85,19 @@ def location_worker(user_pos, *, ag):
     tstr = tic.strftime('%Y%m%dT%H%M%S.%f')
     fprefix = f'img_{tstr}_'
 
+    settings = get_settings()
+    def adjust_AlgoConfig(ag):
+        from dataclasses import replace
+        if not settings.privacy_mode:
+            return ag
+        # force exclusion of isolated points
+        changes={'exclude_isolated_points':True}
+        return replace(ag, **changes)
+
     # use DB for current positions
     my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
-    settings = get_settings()
     my_a = MyAnalyzer(dl=my_dl, obj_path=settings.img_dir, fprefix=fprefix)
-    res = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
+    res = my_a.perform_analysis(observer_pos=user_pos, ag=adjust_AlgoConfig(ag))
     my_p = MyPlotter(
         dl=my_dl,
         obj_path=settings.img_dir, fprefix=fprefix
@@ -112,7 +121,9 @@ def location_worker(user_pos, *, ag):
         if len(lci)>0:
             r += lci[0].table_header()
             for x in lci:
-                r += x.as_html() + '\n'
+                # generate 'inspect' link only when requested to do so (currently, the URL contains geoposition data)
+                with_inspect_link = not settings.privacy_mode
+                r += x.as_html(with_inspect_link=with_inspect_link) + '\n'
         else:
             r += '<tr><td><font color=red>(no clusters match current criteria)</font></td></tr>'
         r += "</table>\n"
@@ -214,12 +225,16 @@ def update_location(payload: LocationRequest):
 
 @app.get('/inspect', response_class=HTMLResponse)
 async def inspect(clat: float, clong: float):
+    settings = get_settings()
+
+    if settings.privacy_mode:
+        return HTMLResponse('permission denied', status_code=403)
+
     # generate "unique" prefix for image files
     tnow = datetime.datetime.now()
     tstr = tnow.strftime('%Y%m%dT%H%M%S.%f')
     fprefix = f'img_{tstr}_'
 
-    settings = get_settings()
     my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
     my_a = MyAnalyzer(dl=my_dl, obj_path=settings.img_dir, fprefix=fprefix)
     my_p = MyPlotter(

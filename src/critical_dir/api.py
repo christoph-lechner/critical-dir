@@ -251,6 +251,7 @@ def check_db_freshness(*, max_age = 900):
     return is_fresh
 
 @app.get('/health', response_class=HTMLResponse)
+@app.head('/health', response_class=HTMLResponse)
 async def health():
     """
     At the moment this only verifies that server is reachable...

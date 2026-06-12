@@ -1,0 +1,39 @@
+# For local development of tests:
+# To bring this file up, run
+#    docker compose -f docker-compose.ci.yml up
+services:
+  pgdatabase:
+    image: postgres:18
+    environment:
+      - POSTGRES_USER=testuser
+      - POSTGRES_PASSWORD=testpwd
+      - POSTGRES_DB=testdb
+    ports:
+      - "5432:5432"
+    volumes:
+      # materials for pre-seeding the DB
+      - "./testdata_pg:/docker-entrypoint-initdb.d/"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api_server:
+    build:
+      context: ../../
+      dockerfile: Dockerfile.api
+    environment:
+      # Note: do not quote the DSN.
+      - CRITICAL_DIR_PG_DSN=postgres://testuser:testpwd@pgdatabase:5432/testdb
+      - CRITICAL_DIR_DATATABLE=criticalmaps_data_test
+
+      # Remember: These paths to be specified as seen from inside the running Docker container.
+      - CRITICAL_DIR_IMG_DIR=/app/objs
+      - CRITICAL_DIR_API_DOWNLOADER_JSON_OUTDIR=/app/not_used_for_test/
+    ports:
+      - "8081:8081"
+    depends_on:
+      pgdatabase:
+        condition: service_healthy
+

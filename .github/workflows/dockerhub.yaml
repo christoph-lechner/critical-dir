@@ -33,14 +33,14 @@ jobs:
       # - Build image first (using "docker build" with tag containing ${{ github.sha }}).
       # - Then pass name of this image to docker-compose.ci.yml execution.
       # - Finally push this image to dockerhub.
-      - name: Docker image: build image for tests
+      - name: "Docker image: build image for tests"
         run: docker compose -f ./tests_docker/docker-compose.ci.yml build
 
       # also starts depending services (they continue to run)
-      - name: Docker image: run tests
+      - name: "Docker image: run tests"
         run: docker compose -f ./tests_docker/docker-compose.ci.yml run --rm tests
 
-      - name: Docker image: shutdown stack used for tests
+      - name: "Docker image: shutdown stack used for tests"
         if: always()
         run: docker compose -f ./tests_docker/docker-compose.ci.yml down -v
 

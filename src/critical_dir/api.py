@@ -271,25 +271,47 @@ def check_db_freshness(*, max_age = 900):
     is_fresh = deltat<max_age
     return is_fresh
 
-@app.get('/health', response_class=HTMLResponse)
-@app.head('/health', response_class=HTMLResponse)
-async def health():
+def health_check_core_worker(*, report_stale_db=True):
     """
-    At the moment this only verifies that server is reachable...
-    TODO/FIXME: add real health check, for instance do core algorithms work without raising exception?
-    TODO: Convert into function returning HTML response and HTTP 200 if everything is ok.
+    Checks the freshness of the DB in any case (as this verifies that the
+    DB can be reached and that the table can be accessed).
     """
     is_fresh = check_db_freshness()
     # print(f'DB freshness --> {is_fresh}')
 
-    # TODO: Currently NOT running a test of the cluster algorithm as it can take a few seconds. One trade-off could be to cache the result of cluster algorithm for (for instance) 15 minutes.
-    
-    is_ok = is_fresh
+    # TODO: Currently NOT running a test of the cluster algorithm as it can
+    # take a few seconds. One trade-off could be to cache the result of cluster
+    # algorithm for (for instance) 15 minutes.
+   
+    # determine the result, taking everything into consideration
+    is_ok = True
+    if report_stale_db:
+        if is_fresh==False:
+            is_ok=False
+    return is_ok
+
+def health_check_worker(kwargs={}):
+    is_ok = health_check_core_worker(**kwargs)
     if is_ok:
         return HTMLResponse('OK')
-
     r = HTMLResponse('not OK', status_code=500)
     return r
+
+
+@app.get('/health', response_class=HTMLResponse)
+@app.head('/health', response_class=HTMLResponse)
+async def health():
+    return health_check_worker()
+
+@app.get('/health_no_freshness_check', response_class=HTMLResponse)
+@app.head('/health_no_freshness_check', response_class=HTMLResponse)
+async def health():
+    """
+    Test for Docker, does not consider DB freshness (as stale data does not prevent the
+    API server from operating). This prevents a "restart storm".
+    Of course, DB freshness has then to be checked with another URL monitor checking /health .
+    """
+    return health_check_worker(kwargs={'report_stale_db':False})
 
 def main():
     uvicorn.run(

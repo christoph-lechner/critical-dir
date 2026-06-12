@@ -18,8 +18,13 @@ The test data was generated using the command:
 In the future, this should be automatized
 
 ## Manual development/testing of the process
-While developing this process, the following command was used:
+While developing this process, the following commands were used (no `docker compose up` is issues):
 ```
-cl@clpc:~/[..]/.github/workflows$ docker compose -f docker-compose.ci.yml up
+docker compose -f docker-compose.ci.yml build
+
+# also starts depending services (they continue to run)
+docker compose -f docker-compose.ci.yml run --rm tests
+
+docker compose -f docker-compose.ci.yml down -v
 ```
 

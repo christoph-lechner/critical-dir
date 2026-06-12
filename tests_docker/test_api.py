@@ -2,18 +2,30 @@
 
 import requests
 import json
-
-apiurl = 'http://localhost:8081/clusters'
+import os
 
 def get_clusters(maxdist=1.0):
+    """
+    Helper function for executing the tests
+    """
+    def get_apiurl():
+        # default value
+        apiurl = 'http://localhost:8081/clusters'
+        apiurl = 'http://cdir_api_server:8081/clusters'
+        if 'TEST_APIURL' in os.environ:
+            apiurl = os.environ['TEST_APIURL']
+        return apiurl
+
+    apiurl = get_apiurl()
     p = {'maxdist':maxdist, 'exclstat':0}
+
     res = requests.get(apiurl, params=p)
     res.raise_for_status()
     j = res.json()
     detected_clusters = j['clusters']
     return detected_clusters
 
-def main():
+def test_api_clusters():
     # for these parameters, the test data returned by DataLoaderTestData
     # contains no matching clusters
     c = get_clusters(maxdist=2.0)
@@ -28,7 +40,3 @@ def main():
     assert c[0]['N']==3
 
     print('checks passed -> got expected results')
-
-
-if __name__=='__main__':
-    main()

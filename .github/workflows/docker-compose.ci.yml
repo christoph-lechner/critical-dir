@@ -43,3 +43,23 @@ services:
       pgdatabase:
         condition: service_healthy
 
+  # for tests: base parameters are identical to API server config
+  tests:
+    build:
+      context: ../../
+      dockerfile: Dockerfile.api
+    environment:
+      - TEST_APIURL=http://cdir_api_server:8081/clusters
+    profiles:
+      # specifying 'profiles' prevents this from launching when 'docker compose up -d' is issued
+      - onlytest
+    entrypoint:
+      - pytest
+      # there are issues with pytest's cache because of permissions (can't write to /app)
+      - -p no:cacheprovider
+      - /app/tests_docker/
+    depends_on:
+      pgdatabase:
+        condition: service_healthy
+      cdir_api_server:
+        condition: service_healthy

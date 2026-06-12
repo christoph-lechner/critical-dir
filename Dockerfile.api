@@ -1,0 +1,32 @@
+# Dockerfile for API server
+
+FROM python:3.10-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+# CL: removed line to install package software-properties-common
+
+# TODO: replace by git clone from github
+COPY . /app
+RUN rm -f /app/.env
+
+RUN pip3 install --no-cache-dir --upgrade pip
+RUN pip3 install --no-cache-dir -e .
+
+# CL: run as user with reduced privileges
+RUN groupadd -r appgroup && useradd -r -g appgroup -u 999 appuser
+
+USER appuser:appgroup
+
+EXPOSE 8081
+
+# periodic health checking (NOTE: stale DB does not result in negative test result)
+HEALTHCHECK --interval=1m --start-period=5m \
+	CMD curl --fail http://localhost:8081/health_no_freshness_check || exit 1
+
+ENTRYPOINT ["critical-dir-api"]

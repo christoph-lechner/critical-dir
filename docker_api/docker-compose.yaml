@@ -1,0 +1,19 @@
+services:
+  critdir-api-server:
+    build:
+      context: ..
+      dockerfile: Dockerfile.api
+    restart: on-failure
+    # in file '.env'
+    # - CRITICAL_DIR_PG_DSN
+    # - CRITICAL_DIR_DATATABLE
+    # - CRITICAL_DIR_IMG_DIR
+    # - CRITICAL_DIR_API_DOWNLOADER_JSON_OUTDIR
+    env_file: .env
+    # UID/GID of user 'cdirdata' (this user has write permissions to data directory)
+    # user: "1006:1006"
+    volumes:
+      # - "/srv/criticaldir_data:/app/cmdata"
+      - "/tmp/objs:/app/objs"
+    ports:
+      - 8777:8081

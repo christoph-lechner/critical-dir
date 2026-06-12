@@ -23,9 +23,3 @@ While developing this process, the following command was used:
 cl@clpc:~/[..]/.github/workflows$ docker compose -f docker-compose.ci.yml up
 ```
 
-## Troubleshooting
-The postgres DB is only initialized the first the `docker compose` command is issed. The DB status is remembered in the docker container, therefore it has to be removed. Be sure to identify the correct hexadecimal container ID.
-```
-docker container ls --all | less
-docker rm <ID>
-```

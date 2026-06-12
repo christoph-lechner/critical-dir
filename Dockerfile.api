@@ -1,3 +1,5 @@
+# Dockerfile for API server
+
 FROM python:3.10-slim
 
 WORKDIR /app
@@ -21,9 +23,10 @@ RUN groupadd -r appgroup && useradd -r -g appgroup -u 999 appuser
 
 USER appuser:appgroup
 
-EXPOSE 8080
+EXPOSE 8081
 
+# periodic health checking (NOTE: stale DB does not result in negative test result)
 HEALTHCHECK --interval=1m --start-period=5m \
-	CMD curl --fail http://localhost:8080/check || exit 1
+	CMD curl --fail http://localhost:8081/health_no_freshness_check || exit 1
 
-ENTRYPOINT ["critical-dir-apiimport", "--status_port=8080"]
+ENTRYPOINT ["critical-dir-api"]

@@ -82,7 +82,7 @@ Here we list the provided API endpoints and the implemented HTTP method.
 - `/location` (POST): This is the main end point to be called by the PWA/interactive web site.
 - `/location_demo` (GET/POST): End point for demo purposes only, uses hardcoded geolocation in Hamburg, Germany. Does return JSON data.
 - `/clusters` (GET): Get JSON data describing the identified clusters. Implemented for the implementation of (planned) interactive client programs.
-- `/health` (GET): Health check URL. Is the API server reachable? This also performs a basic check of database 'freshness'. Returns HTTP status code 200 if checks are passed and HTTP status code 500 when something is out of order.
+- `/health` (GET): Health check URL. Is the API server reachable? This also performs a basic check of database 'freshness'. Returns HTTP status code 200 if checks are passed and HTTP status code 500 when something is out of order. Mainly for Docker, there is also a version that does not take DB freshness into consideration.
 - `/inspect` (GET): (for development, disabled in normal operation) Used by the PWA/interactive website to see a cluster in more detail
 
 ## Data Downloader

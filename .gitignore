@@ -1,5 +1,5 @@
 # .env files may contain sensitive infos, such as credentials
-.env
+**/.env
 
 # ignore .png files written by the tool
 objs/**

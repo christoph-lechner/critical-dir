@@ -1,0 +1,18 @@
+services:
+  cdir-downloader:
+    build:
+      context: ..
+      dockerfile: Dockerfile.import
+    restart: on-failure
+    # in file '.env'
+    # - CRITICAL_DIR_PG_DSN
+    # - CRITICAL_DIR_DATATABLE
+    # - CRITICAL_DIR_IMG_DIR
+    # - CRITICAL_DIR_API_DOWNLOADER_JSON_OUTDIR
+    env_file: .env # /home/cdirdata/.env_criticaldir
+    # UID/GID of user 'cdirdata' (this user has write permissions to data directory)
+    user: "1006:1006"
+    volumes:
+      - "/srv/criticaldir_data:/app/cmdata"
+    ports:
+      - 8401:8080

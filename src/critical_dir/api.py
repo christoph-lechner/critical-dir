@@ -14,6 +14,7 @@ import datetime
 from critical_dir.criticaldir_core import MyAnalyzer,MyPlotter,DataLoaderDB,AlgoConfig
 from critical_dir.db_conn import get_db_conn
 from critical_dir.settings import get_settings
+from critical_dir.exceptions import EInsufficientData
 
 class ClustersResponseItem(BaseModel):
     cluster_ID: int
@@ -169,14 +170,19 @@ def get_clusters():
         cluster_dist_thres=1.0,
         device_trace_persistence=900
     )
-    clusters = clusters_worker(ag=ag, min_cluster_size=3)
+
+    # run clustering algorithm (and catch exception raised if there is insufficient amount of data)
+    try:
+        clusters = clusters_worker(ag=ag, min_cluster_size=3)
+    except EInsufficientData:
+        clusters = []
+
     r = {
         # only parameters influencing the result (we enforce min cluster size -> irrelevant if isolated points are excluded by clustering algorithm or no; not using any trace persistence here)
         'info': f'd={ag.cluster_dist_thres}, s={ag.exclude_stationary_devices}',
         'clusters': clusters
     }
-    # TODO: Ideas what should also be part of the response:
-    # lat/long of all cluster members (maybe also their device IDs?)
+    # Note: we don't include lat/long of all cluster members in response (privacy)
     return r
 
 

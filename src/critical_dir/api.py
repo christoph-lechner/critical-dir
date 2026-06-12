@@ -294,7 +294,7 @@ async def health():
 def main():
     uvicorn.run(
         app,
-        host='0.0.0.0', port=8777,
+        host='0.0.0.0', port=8081,
         server_header=False, # <- don't send "server: uvicorn" in response
     )
 

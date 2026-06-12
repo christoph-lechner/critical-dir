@@ -9,8 +9,10 @@ services:
     # - CRITICAL_DIR_DATATABLE
     # - CRITICAL_DIR_IMG_DIR
     # - CRITICAL_DIR_API_DOWNLOADER_JSON_OUTDIR
-    env_file: .env_for_dockertest
+    env_file: /home/cdirdata/.env_criticaldir
+    # UID/GID of user 'cdirdata' (this user has write permissions to data directory)
+    user: "1006:1006"
     volumes:
-      - "./test/cmdata:/app/cmdata"
+      - "/srv/criticaldir_data:/app/cmdata"
     ports:
-      - 8080:8080
+      - 8401:8080

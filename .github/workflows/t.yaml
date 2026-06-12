@@ -6,4 +6,4 @@ on:
 
 jobs:
   call-workflow-pytest:
-    uses: .github/workflows/run_pytest.yaml
+    uses: ./.github/workflows/run_pytest.yaml

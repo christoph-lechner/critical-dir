@@ -52,10 +52,14 @@ class ClusterInfo:
         return '<tr><td>(ID)</td><td>N</td><td>center</td><td>course [deg]</td><td>dist [km]</td><td><!-- for inspect link --></td></tr>'
     def make_openstreetmap_url(self):
         return f'https://www.openstreetmap.org/#map=14/{self.latitude:.2f}/{self.longitude:.2f}'
-    def as_html(self):
+    def as_html(self, *, with_inspect_link=True):
         marker_color_html=matplotlib.colors.to_hex(self.marker_color)
+
         # replace by jinja template?
-        return f"<tr><td style=\"background-color: {marker_color_html}\">{self.cluster_ID}</td><td>{self.N}</td><td><a href=\"{self.make_openstreetmap_url()}\" target=\"_blank\">{self.latitude:.2f}, {self.longitude:.2f}</a></td><td>{self.initial_course:.2f}</td><td>{self.dist_km:.2f}</td><td><a href=\"api/inspect?clat={self.latitude:.6f}&clong={self.longitude:.6f}\" target=\"_blank\">Inspect</a></td></tr>"
+        inspect_link = '' # default: do not emit "inspect" link
+        if with_inspect_link:
+            inspect_link = f'<a href="api/inspect?clat={self.latitude:.6f}&clong={self.longitude:.6f}" target="_blank">Inspect</a>'
+        return f"<tr><td style=\"background-color: {marker_color_html}\">{self.cluster_ID}</td><td>{self.N}</td><td><a href=\"{self.make_openstreetmap_url()}\" target=\"_blank\">{self.latitude:.2f}, {self.longitude:.2f}</a></td><td>{self.initial_course:.2f}</td><td>{self.dist_km:.2f}</td><td>{inspect_link}</td></tr>"
 
 @dataclass(frozen=True)
 class AlgoConfig:
@@ -124,9 +128,28 @@ class DataLoaderDB(DataLoader):
             self.supports_tracepersistence = False
             self.t0 = t0
 
-
     def has_data_for_tracepersistence(self) -> bool:
         return (self.supports_tracepersistence) # no trace persistence for "wayback machine mode"
+
+    def get_data_newest_timestamp(self) -> float:
+        """
+        Function obtains most recent timestamp from database.
+        Possible application: check freshness of data.
+        """
+        # establish DB connection
+        # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
+        conn = self.f_factory_DBconn()
+        cur = conn.cursor(row_factory=dict_row)
+
+        # Timestamps are stored as UNIX epoch, get most recent timestamp value from DB
+        cur.execute("SELECT MAX(timestamp) AS m FROM criticalmaps_data;")
+        res = cur.fetchall()
+        if len(res)==0:
+            raise ValueError('no data from DB while checking age of data')
+        max_timestamp = res[0]['m']
+
+        # FIXME: add code to close DB connection
+        return max_timestamp
 
     def get_data(self, *, return_all_fields=True) -> list[dict]:
         """

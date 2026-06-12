@@ -14,6 +14,7 @@ import datetime
 from critical_dir.criticaldir_core import MyAnalyzer,MyPlotter,DataLoaderDB,AlgoConfig
 from critical_dir.db_conn import get_db_conn
 from critical_dir.settings import get_settings
+from critical_dir.exceptions import EInsufficientData
 
 class ClustersResponseItem(BaseModel):
     cluster_ID: int
@@ -68,7 +69,8 @@ def clusters_worker(*, ag, min_cluster_size:int=3):
 
     # To be JSON serializable, the returned object has to be an instance of the defined pydantic class.
     # Some of the fields that come from the analysis process should be shadowed from the client, such as course/distance because they were computed using the dummy user_position we had to provide
-    # Here we also filter out all small clusters
+    # Only clusters exceeding a minimum number of members are returned to the
+    # user to prevent exposing individual positions.
     r = []
     for ci in res.cluster_infos:
         if ci.N<min_cluster_size:
@@ -84,11 +86,19 @@ def location_worker(user_pos, *, ag):
     tstr = tic.strftime('%Y%m%dT%H%M%S.%f')
     fprefix = f'img_{tstr}_'
 
+    settings = get_settings()
+    def adjust_AlgoConfig(ag):
+        from dataclasses import replace
+        if not settings.privacy_mode:
+            return ag
+        # force exclusion of isolated points
+        changes={'exclude_isolated_points':True}
+        return replace(ag, **changes)
+
     # use DB for current positions
     my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
-    settings = get_settings()
     my_a = MyAnalyzer(dl=my_dl, obj_path=settings.img_dir, fprefix=fprefix)
-    res = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
+    res = my_a.perform_analysis(observer_pos=user_pos, ag=adjust_AlgoConfig(ag))
     my_p = MyPlotter(
         dl=my_dl,
         obj_path=settings.img_dir, fprefix=fprefix
@@ -112,7 +122,9 @@ def location_worker(user_pos, *, ag):
         if len(lci)>0:
             r += lci[0].table_header()
             for x in lci:
-                r += x.as_html() + '\n'
+                # generate 'inspect' link only when requested to do so (currently, the URL contains geoposition data)
+                with_inspect_link = not settings.privacy_mode
+                r += x.as_html(with_inspect_link=with_inspect_link) + '\n'
         else:
             r += '<tr><td><font color=red>(no clusters match current criteria)</font></td></tr>'
         r += "</table>\n"
@@ -169,14 +181,19 @@ def get_clusters():
         cluster_dist_thres=1.0,
         device_trace_persistence=900
     )
-    clusters = clusters_worker(ag=ag, min_cluster_size=3)
+
+    # run clustering algorithm (and catch exception raised if there is insufficient amount of data)
+    try:
+        clusters = clusters_worker(ag=ag, min_cluster_size=3)
+    except EInsufficientData:
+        clusters = []
+
     r = {
         # only parameters influencing the result (we enforce min cluster size -> irrelevant if isolated points are excluded by clustering algorithm or no; not using any trace persistence here)
         'info': f'd={ag.cluster_dist_thres}, s={ag.exclude_stationary_devices}',
         'clusters': clusters
     }
-    # TODO: Ideas what should also be part of the response:
-    # lat/long of all cluster members (maybe also their device IDs?)
+    # Note: we don't include lat/long of all cluster members in response (privacy)
     return r
 
 
@@ -212,18 +229,18 @@ def update_location(payload: LocationRequest):
     return location_worker(user_pos, ag=ag)
 
 
-def inspect_worker(lat: float, long: float) -> str:
-    return 'hallo'
-
 @app.get('/inspect', response_class=HTMLResponse)
 async def inspect(clat: float, clong: float):
+    settings = get_settings()
+
+    if settings.privacy_mode:
+        return HTMLResponse('permission denied', status_code=403)
+
     # generate "unique" prefix for image files
     tnow = datetime.datetime.now()
     tstr = tnow.strftime('%Y%m%dT%H%M%S.%f')
     fprefix = f'img_{tstr}_'
 
-    settings = get_settings()
-    fn_img = inspect_worker(lat=clat, long=clong)
     my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
     my_a = MyAnalyzer(dl=my_dl, obj_path=settings.img_dir, fprefix=fprefix)
     my_p = MyPlotter(
@@ -236,13 +253,43 @@ async def inspect(clat: float, clong: float):
     html = f"<html><body><a href=/myapp/>For iPhone PWA: Back</a><p>Inspecting local distribution of riders around {clat:.4f},{clong:.4f}. Note that this plot does not indicate cluster infos, so all positions are indicated with same marker color.<img src=\"objs/{fn_img}\"></body></html>"
     return HTMLResponse(content=html)
 
-@app.get('/health')
+def check_db_freshness(*, max_age = 900):
+    """
+    Optional arguments: maximum age in seconds.
+    If data is older, this is considered an error.
+    """
+    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
+    max_timestamp = my_dl.get_data_newest_timestamp()
+    epoch_now = datetime.datetime.now().timestamp()
+    deltat = epoch_now - max_timestamp
+
+    # Catch any timestamps from the "future". Or the system clock is off...
+    if deltat<0:
+        raise ValueError('Most recent timestamp is newer than current time on server.')
+
+    # print(f'dbg: deltat={deltat}')
+    is_fresh = deltat<max_age
+    return is_fresh
+
+@app.get('/health', response_class=HTMLResponse)
+@app.head('/health', response_class=HTMLResponse)
 async def health():
     """
     At the moment this only verifies that server is reachable...
     TODO/FIXME: add real health check, for instance do core algorithms work without raising exception?
+    TODO: Convert into function returning HTML response and HTTP 200 if everything is ok.
     """
-    return {'status':'healthy'}
+    is_fresh = check_db_freshness()
+    # print(f'DB freshness --> {is_fresh}')
+
+    # TODO: Currently NOT running a test of the cluster algorithm as it can take a few seconds. One trade-off could be to cache the result of cluster algorithm for (for instance) 15 minutes.
+    
+    is_ok = is_fresh
+    if is_ok:
+        return HTMLResponse('OK')
+
+    r = HTMLResponse('not OK', status_code=500)
+    return r
 
 def main():
     uvicorn.run(

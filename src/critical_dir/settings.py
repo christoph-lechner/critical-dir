@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     img_dir: Path
     api_downloader_json_outdir: Path
 
+    # controls privacy-friendly behavior of the API server (for example: do not expose exact geolocations of individual users)
+    privacy_mode: bool = True
+
     model_config = SettingsConfigDict(
         env_file='.env',
         # ?add env_file_encoding='utf-8'

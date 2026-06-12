@@ -173,7 +173,11 @@ def location_worker(user_pos, *, ag):
     }
 
 @app.get('/clusters', response_model=ClustersResponse)
-def get_clusters():
+def get_clusters(
+        # parameters with their default values (only relevant in test mode)
+        maxdist: float = 1.0,
+        exclstat: bool = True
+    ):
     # for the demo, some hard-coded defaults
     ag = AlgoConfig(
         exclude_isolated_points=True,
@@ -181,6 +185,18 @@ def get_clusters():
         cluster_dist_thres=1.0,
         device_trace_persistence=900
     )
+
+    # only in test mode, a value passed in the GET request becomes relevant
+    settings = get_settings()
+    if settings.test_mode:
+        print('test mode')
+        if maxdist<0:
+            raise ValueError('maxdist parameter must be positive')
+        if maxdist>100:
+            raise ValueError('maxdist too large... ')
+        from dataclasses import replace
+        changes = {'cluster_dist_thres': maxdist, 'exclude_stationary_devices':exclstat}
+        ag = replace(ag, **changes)
 
     # run clustering algorithm (and catch exception raised if there is insufficient amount of data)
     try:
@@ -190,7 +206,7 @@ def get_clusters():
 
     r = {
         # only parameters influencing the result (we enforce min cluster size -> irrelevant if isolated points are excluded by clustering algorithm or no; not using any trace persistence here)
-        'info': f'd={ag.cluster_dist_thres}, s={ag.exclude_stationary_devices}',
+        'info': f'd={ag.cluster_dist_thres}, x={ag.exclude_stationary_devices}',
         'clusters': clusters
     }
     # Note: we don't include lat/long of all cluster members in response (privacy)

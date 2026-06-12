@@ -1,0 +1,4 @@
+Files in this directory are used to pre-seed the DB
+
+https://docs.docker.com/guides/pre-seeding/
+

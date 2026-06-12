@@ -238,7 +238,11 @@ class DataLoaderDB(DataLoader):
 
 class DataLoaderTestData(DataLoader):
     """
-    Note: test data is used for automatic testing of clustering algorithm, do not modify this class without considering impact on automatic tests.
+    Note: test data is used for automatic testing of clustering algorithm,
+    do not modify this class without considering impact on automatic tests.
+    As of June-2026, there are two types of tests depending on this data:
+    - tests with pytest
+    - tests of the API server / Docker image
     """
     def __init__(self):
         self.id_datapoint = 0

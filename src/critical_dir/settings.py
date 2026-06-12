@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     # controls privacy-friendly behavior of the API server (for example: do not expose exact geolocations of individual users)
     privacy_mode: bool = True
 
+    test_mode: bool = False
+
     model_config = SettingsConfigDict(
         env_file='.env',
         # ?add env_file_encoding='utf-8'

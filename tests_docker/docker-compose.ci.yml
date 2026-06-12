@@ -25,7 +25,7 @@ services:
 
   cdir_api_server:
     build:
-      context: ../../
+      context: ../
       dockerfile: Dockerfile.api
     environment:
       # Note: do not quote the DSN.
@@ -46,7 +46,7 @@ services:
   # for tests: base parameters are identical to API server config
   tests:
     build:
-      context: ../../
+      context: ../
       dockerfile: Dockerfile.api
     environment:
       - TEST_APIURL=http://cdir_api_server:8081/clusters

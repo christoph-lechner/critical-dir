@@ -1,0 +1,9 @@
+name: run tests (CI)
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  call-workflow-pytest:
+    uses: .github/workflows/run_pytest.yaml

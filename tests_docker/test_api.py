@@ -11,7 +11,7 @@ def get_clusters(maxdist=1.0):
     def get_apiurl():
         # default value
         apiurl = 'http://localhost:8081/clusters'
-        apiurl = 'http://cdir_api_server:8081/clusters'
+        # apiurl = 'http://cdir_api_server:8081/clusters'
         if 'TEST_APIURL' in os.environ:
             apiurl = os.environ['TEST_APIURL']
         return apiurl

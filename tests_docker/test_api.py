@@ -6,7 +6,7 @@ import os
 
 def get_clusters(maxdist=1.0):
     """
-    Helper function for executing the tests
+    Helper function for testing API server.
     """
     def get_apiurl():
         # default value
@@ -17,7 +17,7 @@ def get_clusters(maxdist=1.0):
         return apiurl
 
     apiurl = get_apiurl()
-    p = {'maxdist':maxdist, 'exclstat':0}
+    p = {'maxdist':maxdist, 'exclstat':0} # the API server ignores these parameters when it is not run in test mode
 
     res = requests.get(apiurl, params=p)
     res.raise_for_status()

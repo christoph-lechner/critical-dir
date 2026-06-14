@@ -67,13 +67,19 @@ def generate_subclusters(*, data, nmin=3, nmax=5, do_plot=False):
 
     # Run Constrained K-Means clustering
     # Forces every cluster to have between 3 and 5 points, leaving no outliers.
-    clf = KMeansConstrained(
-            n_clusters=estimated_clusters,
-            size_min=nmin,
-            size_max=nmax,
-            random_state=42
-    )
-    labels = clf.fit_predict(X)
+    if len(X)>nmax:
+        # for very small datasets, we get the exception "ValueError: size_min and size_max must be a positive number smaller than the number of data points or `None`"
+        clf = KMeansConstrained(
+                n_clusters=estimated_clusters,
+                size_min=nmin,
+                size_max=nmax,
+                random_state=42
+        )
+        labels = clf.fit_predict(X)
+    else:
+        # fake the result of the algorithm for a single cluster
+        labels = np.zeros(len(X), dtype=int)
+    print(f'*** {type(labels)} {labels} ***')
 
     subclusters = []
     for curr_label in set(labels):

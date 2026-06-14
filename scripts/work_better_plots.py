@@ -48,16 +48,17 @@ def main():
             return True
         return False
     data = list(filter(
-        lambda q: is_in_munich(q) and is_interesting_group2(q),
+        lambda q: is_in_munich(q), # and is_interesting_group2(q),
         data_complete
     ))
-    print(type(data))
-    print(data[0])
+    #print(type(data))
+    #print(data[0])
     data_lat = [_['latitude']  for _ in data]
     data_lon = [_['longitude'] for _ in data]
     fig,hax=plt.subplots(1)
     hax.plot(data_lon,data_lat,'.')
     plt.show()
+    print(f'number of datapoints {len(data_lat)}')
 
     tstart = datetime.datetime.now()
 

@@ -18,47 +18,20 @@ from zoneinfo import ZoneInfo
 from critical_dir.criticaldir_core import MyAnalyzer,MyPlotter,DataLoaderDB,AlgoConfig
 from critical_dir.db_conn import get_db_conn
 
-def main():
-    # fixed dummy position in Hamburg for dev purposes
-    my_pos = [53.55, 10.0]
+def generate_subclusters(*, data, nmin=3, nmax=5, do_plot=False):
+    def enforce_element_count(labels,curr_label):
+        nele = np.sum(labels==curr_label)
+        if nmin<=nele and nele<=nmax:
+            return
+        raise ValueError(f'there is a cluster having {nele} elements, violating the requirements.')
 
-    # We use the "DB loader"
-    dt = datetime.datetime(2026,6,14, 15,00, tzinfo=ZoneInfo('Europe/Berlin')) # "Sternfahrt" in Munich, Germany
-    epoch = int(dt.timestamp())
-    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch)
-    data_complete = my_dl.get_data()
-
-
-    def is_in_munich(q):
-        lat0 = 48.13
-        lon0 = 11.57
-        if abs(q['latitude']-lat0)<0.5 and abs(q['longitude']-lon0)<0.5:
-            return True
-        return False
-    #
-    # Helper functions to select interesting point groups.
-    # Needed because no clustering algorithm has been applied (we use the
-    # data "directly from the source") and thus outliers are to be expected.
-    def is_interesting_group1(q):
-        if 48.11<=q['latitude'] and q['latitude']<=48.12:
-            return True
-        return False
-    def is_interesting_group2(q):
-        if 48.146<=q['latitude'] and q['latitude']<=48.172 and 11.53<=q['longitude'] and q['longitude']<=11.56:
-            return True
-        return False
-    data = list(filter(
-        lambda q: is_in_munich(q), # and is_interesting_group2(q),
-        data_complete
-    ))
-    #print(type(data))
-    #print(data[0])
-    data_lat = [_['latitude']  for _ in data]
-    data_lon = [_['longitude'] for _ in data]
-    fig,hax=plt.subplots(1)
-    hax.plot(data_lon,data_lat,'.')
-    plt.show()
+    data_lat = np.array([_['latitude']  for _ in data])
+    data_lon = np.array([_['longitude'] for _ in data])
     print(f'number of datapoints {len(data_lat)}')
+    if do_plot:
+        fig,hax=plt.subplots(1)
+        hax.plot(data_lon,data_lat,'.')
+        plt.show()
 
     tstart = datetime.datetime.now()
 
@@ -100,11 +73,23 @@ def main():
     # Forces every cluster to have between 3 and 5 points, leaving no outliers.
     clf = KMeansConstrained(
             n_clusters=estimated_clusters,
-            size_min=3,
-            size_max=5,
+            size_min=nmin,
+            size_max=nmax,
             random_state=42
     )
     labels = clf.fit_predict(X)
+
+    subclusters = []
+    for curr_label in set(labels):
+        enforce_element_count(labels,curr_label) # raises exception if member count is not in expected range
+        curr_lat = data_lat[labels==curr_label]
+        curr_lon = data_lon[labels==curr_label]
+        # TODO/FIXME: improve computation if needed
+        group_N = np.sum(labels==curr_label)
+        group_center_lat = np.mean(curr_lat)
+        group_center_lon = np.mean(curr_lon)
+        group_rho = 100 # meters
+        subclusters.append({'N':group_N, 'clat':group_center_lat, 'clon':group_center_lon, 'rho':group_rho})
 
     tend = datetime.datetime.now()
     deltat = (tend-tstart).total_seconds()
@@ -114,27 +99,60 @@ def main():
     ##################################
     # Finally, let's draw some plots #
     ##################################
-    def enforce_element_count(labels,curr_label):
-        nele = np.sum(labels==curr_label)
-        if 3<=nele and nele<=5:
-            return
-        raise ValueError(f'there is a cluster having {nele} elements, violating the requirements.')
+    if do_plot:
+        fig,hax = plt.subplots(1)
+        for curr_label in set(labels):
+            enforce_element_count(labels,curr_label)
+            curr_x = xs[labels==curr_label]
+            curr_y = ys[labels==curr_label]
+            hax.plot(curr_x, curr_y, 'o')
+            # Draw info rectangle indicating min/max range covered by the cluster
+            # Note: not all points inside of the rect are part of the cluster!
+            curr_x_min = np.min(curr_x)
+            curr_x_max = np.max(curr_x)
+            curr_y_min = np.min(curr_y)
+            curr_y_max = np.max(curr_y)
+            rect = patches.Rectangle((curr_x_min,curr_y_min), curr_x_max-curr_x_min, curr_y_max-curr_y_min, linewidth=1, edgecolor='k', facecolor='none')
+            hax.add_patch(rect)
+        plt.show()
+    return subclusters
 
-    fig,hax = plt.subplots(1)
-    for curr_label in set(labels):
-        enforce_element_count(labels,curr_label)
-        curr_x = xs[labels==curr_label]
-        curr_y = ys[labels==curr_label]
-        hax.plot(curr_x, curr_y, 'o')
-        # Draw info rectangle indicating min/max range covered by the cluster
-        # Note: not all points inside of the rect are part of the cluster!
-        curr_x_min = np.min(curr_x)
-        curr_x_max = np.max(curr_x)
-        curr_y_min = np.min(curr_y)
-        curr_y_max = np.max(curr_y)
-        rect = patches.Rectangle((curr_x_min,curr_y_min), curr_x_max-curr_x_min, curr_y_max-curr_y_min, linewidth=1, edgecolor='k', facecolor='none')
-        hax.add_patch(rect)
-    plt.show()
+def main():
+    # fixed dummy position in Hamburg for dev purposes
+    my_pos = [53.55, 10.0]
+
+    # We use the "DB loader"
+    dt = datetime.datetime(2026,6,14, 15,00, tzinfo=ZoneInfo('Europe/Berlin')) # "Sternfahrt" in Munich, Germany
+    epoch = int(dt.timestamp())
+    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch)
+    data_complete = my_dl.get_data()
+
+
+    def is_in_munich(q):
+        lat0 = 48.13
+        lon0 = 11.57
+        if abs(q['latitude']-lat0)<0.5 and abs(q['longitude']-lon0)<0.5:
+            return True
+        return False
+    #
+    # Helper functions to select interesting point groups.
+    # Needed because no clustering algorithm has been applied (we use the
+    # data "directly from the source") and thus outliers are to be expected.
+    def is_interesting_group1(q):
+        if 48.11<=q['latitude'] and q['latitude']<=48.12:
+            return True
+        return False
+    def is_interesting_group2(q):
+        if 48.146<=q['latitude'] and q['latitude']<=48.172 and 11.53<=q['longitude'] and q['longitude']<=11.56:
+            return True
+        return False
+    data = list(filter(
+        lambda q: is_in_munich(q), # and is_interesting_group2(q),
+        data_complete
+    ))
+    #print(type(data))
+    #print(data[0])
+    generate_subclusters(data=data, do_plot=True)
 
 if __name__=='__main__':
     main()

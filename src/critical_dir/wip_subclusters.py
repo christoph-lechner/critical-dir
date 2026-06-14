@@ -79,18 +79,28 @@ def generate_subclusters(*, data, nmin=3, nmax=5, do_plot=False):
     else:
         # fake the result of the algorithm for a single cluster
         labels = np.zeros(len(X), dtype=int)
-    print(f'*** {type(labels)} {labels} ***')
 
     subclusters = []
     for curr_label in set(labels):
         enforce_element_count(labels,curr_label) # raises exception if member count is not in expected range
         curr_lat = data_lat[labels==curr_label]
         curr_lon = data_lon[labels==curr_label]
-        # TODO/FIXME: improve computation if needed
-        group_N = np.sum(labels==curr_label)
+
+        # determine largest distance between any member and the center of the cluster -> "radius" (TODO/FIXME: improve computation code)
+        # one issue is that the computation of the radius is done in x/y, but we return lat/lon to the client (computed based on lat/lon data)
+        curr_x =   xs[labels==curr_label]
+        curr_y =   ys[labels==curr_label]
+        group_center_x = np.mean(curr_x)
+        group_center_y = np.mean(curr_y)
+        dx = curr_x-group_center_x
+        dy = curr_y-group_center_y
+        rho2 = dx**2+dy**2
+        max_rho2 = rho2.max()
+
         group_center_lat = np.mean(curr_lat)
         group_center_lon = np.mean(curr_lon)
-        group_rho = 100 # meters
+        group_rho = np.sqrt(max_rho2) # meters
+        group_N = np.sum(labels==curr_label)
         subclusters.append({'N':group_N, 'clat':group_center_lat, 'clon':group_center_lon, 'rho':group_rho})
 
     tend = datetime.datetime.now()

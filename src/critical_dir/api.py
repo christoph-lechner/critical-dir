@@ -93,7 +93,7 @@ def clusters_worker_fdev(*, res, cluster_ID, f_generate_subclusters):
     for d,l in zip(res.data, res.cluster_labels):
         if l==cluster_ID:
             data_in_cluster.append(d)
-    print(data_in_cluster)
+    # print(data_in_cluster)
     return f_generate_subclusters(data=data_in_cluster)
 
 
@@ -117,7 +117,7 @@ def clusters_worker(*, ag, min_cluster_size:int=3, use_simulated_data=False):
         if ci.N<min_cluster_size:
             continue
         subclusters = clusters_worker_fdev(res=res, cluster_ID=ci.cluster_ID, f_generate_subclusters=generate_subclusters)
-        print(subclusters)
+        # print(subclusters)
         r.append(
             {'cluster_ID':ci.cluster_ID,
              'N':ci.N, 'center_latitude':ci.latitude, 'center_longitude':ci.longitude,

@@ -15,12 +15,19 @@ from critical_dir.criticaldir_core import MyAnalyzer,MyPlotter,DataLoaderDB,Algo
 from critical_dir.db_conn import get_db_conn
 from critical_dir.settings import get_settings
 from critical_dir.exceptions import EInsufficientData
+from critical_dir.wip_subclusters import generate_subclusters
 
+class SubClustersResponseItem(BaseModel):
+    N: int
+    clat: float
+    clon: float
+    rho: float
 class ClustersResponseItem(BaseModel):
     cluster_ID: int
+    N: int
     center_latitude: float
     center_longitude: float
-    N: int
+    subclusters: list[SubClustersResponseItem]
 class ClustersResponse(BaseModel):
     info: str
     clusters: list[ClustersResponseItem]
@@ -80,6 +87,16 @@ def generate_simulated_clusters():
         r.append({'cluster_ID':currID, 'center_latitude':currp[0], 'center_longitude':currp[1], 'N':currN})
     return r
 
+def clusters_worker_fdev(*, res, cluster_ID, f_generate_subclusters):
+    # select datapoints that are in the cluster
+    data_in_cluster = []
+    for d,l in zip(res.data, res.cluster_labels):
+        if l==cluster_ID:
+            data_in_cluster.append(d)
+    # print(data_in_cluster)
+    return f_generate_subclusters(data=data_in_cluster)
+
+
 def clusters_worker(*, ag, min_cluster_size:int=3, use_simulated_data=False):
     if use_simulated_data:
         return generate_simulated_clusters()
@@ -99,7 +116,13 @@ def clusters_worker(*, ag, min_cluster_size:int=3, use_simulated_data=False):
     for ci in res.cluster_infos:
         if ci.N<min_cluster_size:
             continue
-        r.append({'cluster_ID':ci.cluster_ID, 'center_latitude':ci.latitude, 'center_longitude':ci.longitude, 'N':ci.N})
+        subclusters = clusters_worker_fdev(res=res, cluster_ID=ci.cluster_ID, f_generate_subclusters=generate_subclusters)
+        # print(subclusters)
+        r.append(
+            {'cluster_ID':ci.cluster_ID,
+             'N':ci.N, 'center_latitude':ci.latitude, 'center_longitude':ci.longitude,
+             'subclusters': subclusters
+            })
     return r
 
 def location_worker(user_pos, *, ag):

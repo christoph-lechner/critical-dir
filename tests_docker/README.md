@@ -13,6 +13,11 @@ docker compose -f ./tests_docker/docker-compose.ci.yml run --rm tests
 docker compose -f ./tests_docker/docker-compose.ci.yml down -v
 ```
 
+If you wish to see the logs of the previous run, use
+```
+docker compose -f ./tests_docker/docker-compose.ci.yml logs cdir_api_server
+```
+
 
 ## Technical remarks
 When the database is first created, the `postgres` Docker image automatically processes all `.sql` and `.sh` files found in directory `/docker-entrypoint-initdb.d/`, a process called [pre-seeding](https://docs.docker.com/guides/pre-seeding/).

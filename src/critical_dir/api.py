@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse,Response
 from fastapi import Request
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 
 import numpy as np
 from pathlib import Path
@@ -23,12 +23,21 @@ class SubClustersResponseItem(BaseModel):
     clat: float
     clon: float
     rho: float
+    @field_serializer('clat','clon','rho') # use mode='plain'?
+    def float_rounded(self, value: float) -> float:
+        return round(value,6)
+
 class ClustersResponseItem(BaseModel):
     cluster_ID: int
     N: int
     center_latitude: float
     center_longitude: float
     subclusters: list[SubClustersResponseItem] | None=None # field is optional (appears in returned JSON with value 'null')
+
+    @field_serializer('center_latitude','center_longitude') # use mode='plain'?
+    def float_rounded(self, value: float) -> float:
+        return round(value,6)
+
 class ClustersResponse(BaseModel):
     info: str
     clusters: list[ClustersResponseItem]

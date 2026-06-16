@@ -49,7 +49,7 @@ services:
       context: ../
       dockerfile: Dockerfile.api
     environment:
-      - TEST_APIURL=http://cdir_api_server:8081/clusters
+      - TEST_APIURL=http://cdir_api_server:8081/
     profiles:
       # specifying 'profiles' prevents this from launching when 'docker compose up -d' is issued
       - onlytest

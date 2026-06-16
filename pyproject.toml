@@ -9,6 +9,7 @@ dependencies = [
     "matplotlib",
     "scipy",
     "scikit-learn",
+    "k-means-constrained",
     "geopandas",
     "uvicorn",
     "fastapi",

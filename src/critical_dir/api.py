@@ -10,6 +10,7 @@ from pydantic import BaseModel
 import numpy as np
 from pathlib import Path
 import datetime
+from zoneinfo import ZoneInfo
 
 from critical_dir.criticaldir_core import MyAnalyzer,MyPlotter,DataLoaderDB,AlgoConfig
 from critical_dir.db_conn import get_db_conn
@@ -27,7 +28,7 @@ class ClustersResponseItem(BaseModel):
     N: int
     center_latitude: float
     center_longitude: float
-    subclusters: list[SubClustersResponseItem]
+    subclusters: list[SubClustersResponseItem] | None=None # field is optional (appears in returned JSON with value 'null')
 class ClustersResponse(BaseModel):
     info: str
     clusters: list[ClustersResponseItem]

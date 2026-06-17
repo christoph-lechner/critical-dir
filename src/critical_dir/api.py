@@ -126,16 +126,15 @@ def clusters_worker(*, ag, min_cluster_size:int=3, use_simulated_data=False):
     epoch = int(tnow.timestamp())
 
     # use DB to obtain position data
-    # my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch)
-    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
+    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch)
     my_a = MyAnalyzer(dl=my_dl)
     res = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
     # print(res.cluster_infos)
 
     age = 600
-    #my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch-age)
-    #my_a = MyAnalyzer(dl=my_dl)
-    #res_historic = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
+    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch-age)
+    my_a = MyAnalyzer(dl=my_dl)
+    # res_historic = my_a.perform_analysis(observer_pos=user_pos, ag=ag) # <-- if this line is active, test fails!
 
     # To be JSON serializable, the returned object has to be an instance of the defined pydantic class.
     # Some of the fields that come from the analysis process should be shadowed from the client, such as course/distance because they were computed using the dummy user_position we had to provide

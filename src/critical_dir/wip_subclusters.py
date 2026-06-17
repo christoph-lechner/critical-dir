@@ -37,6 +37,8 @@ def generate_subclusters(*, data, nmin=3, nmax=5, do_plot=False):
     crs_wgs84 = CRS.from_epsg(4326)
     sample_lat = data_lat[0]
     sample_lon = data_lon[0]
+    # TODO/FIXME: The call to query_utm_crs_info costs about 100ms on my PC, dominating the total time spent in this function.
+    # ?replace with direct zone arithmetic?
     utm_crs_list = query_utm_crs_info(
             datum_name='WGS 84',
             area_of_interest = AreaOfInterest(

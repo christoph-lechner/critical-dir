@@ -10,6 +10,14 @@ Christoph Lechner, 3 June 2026
 - PostgreSQL v18
 - Python 3.10 or newer
   - notable packages used: FastAPI, scikit-learn, psycopg, pytest
+- Test automatization using GitHub Actions
+
+### Testing
+As part of the GitHub Actions workflow triggered by pushes to the `master` branch, a Docker image containing the API server is generated.
+To verify the core functionality of this image, it is started alongside a PostgreSQL container populated with a test dataset.
+Automated tests send HTTP requests to the core `/clusters` API endpoint with different request parameters and validate the responses against expected results.
+Only images that successfully pass these tests are published to DockerHub.
+
 
 ## Motivation and Solution
 The open-source project [CriticalMaps](https://www.criticalmaps.net/) ([repositories on github](https://github.com/criticalmaps/)) enables participants of ["Critical Mass"](https://en.wikipedia.org/wiki/Critical_Mass_(cycling)) events to share their current location with others on an interactive map.
@@ -79,11 +87,13 @@ Currently the URIs on the HTTPS Apache2 server are organized as follows:
 
 ### API Endpoints
 Here we list the provided API endpoints and the implemented HTTP method.
-- `/location` (POST): This is the main end point to be called by the PWA/interactive web site.
-- `/location_demo` (GET/POST): End point for demo purposes only, uses hardcoded geolocation in Hamburg, Germany. Does return JSON data.
-- `/clusters` (GET): Get JSON data describing the identified clusters. Implemented for the implementation of (planned) interactive client programs.
-- `/health` (GET): Health check URL. Is the API server reachable? This also performs a basic check of database 'freshness'. Returns HTTP status code 200 if checks are passed and HTTP status code 500 when something is out of order. Mainly for Docker, there is also a version that does not take DB freshness into consideration.
-- `/inspect` (GET): (for development, disabled in normal operation) Used by the PWA/interactive website to see a cluster in more detail
+- `/clusters` (GET): This is the main endpoint for the clients. Get JSON data describing the identified clusters.
+- `/clusters_demo` (GET): Delivers demo data (periodic motion of clusters). Mainly for development of clients.
+- `/health` (GET/HEAD): Endpoint for health checks. Is the API server reachable? This also performs a basic check of database 'freshness'. Returns HTTP status code 200 if checks are passed and HTTP status code 500 when something is out of order. Mainly for Docker, there is also a version that does not take DB freshness into consideration (`/health\_no\_freshness\_check`, also GET/HEAD HTTP methods supported).
+- deprecated endpoints
+  - `/location` (POST): This was the main end point to be called by the first version of the PWA/interactive web site.
+  - `/location_demo` (GET/POST): End point for demo purposes only, uses hardcoded geolocation in Hamburg, Germany. Does return JSON data.
+  - `/inspect` (GET): (for development, disabled in normal operation) Used by the PWA/interactive website to see a cluster in more detail
 
 ## Data Downloader
 The position data processed by this software project is periodically obtained from the CriticalMaps API.

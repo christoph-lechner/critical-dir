@@ -1,5 +1,21 @@
 # README
-Christoph Lechner, 3 June 2026
+Christoph Lechner, 18 June 2026
+
+## Table of Contents
+- [Description](#description)
+  - [Technologies used](#technologies-used)
+  - [Testing](#testing)
+- [Motivation and Solution](#motivation-and-solution)
+  - [Applied solution](#applied-solution)
+  - [Examples](#examples)
+- [Running It](#running-it)
+  - [Installation](#installation)
+  - [Running it](#running-it-1)
+  - [Organization of URIs](#organization-of-uris)
+  - [API Endpoints](#api-endpoints)
+- [Data Downloader](#data-downloader)
+  - [Health Monitoring](#health-monitoring)
+
 
 ## Description
 ![system layout](doc/img/schematic.png)
@@ -11,6 +27,7 @@ Christoph Lechner, 3 June 2026
 - Python 3.10 or newer
   - notable packages used: FastAPI, scikit-learn, psycopg, pytest
 - Test automatization using GitHub Actions
+- The [web client](https://github.com/christoph-lechner/critical-dir-map) is implemented using HTML, JavaScript, and [Leaflet](https://leafletjs.com/)
 
 ### Testing
 As part of the GitHub Actions workflow triggered by pushes to the `master` branch, a Docker image containing the API server is generated.
@@ -24,7 +41,7 @@ The open-source project [CriticalMaps](https://www.criticalmaps.net/) ([reposito
 Apps are available for the platforms iPhone and Android. Alternatively, you can see the current positions [online in the web browser](https://www.criticalmaps.net/map).
 
 The CriticalMaps App (I only used the iOS version) is generally very well made.
-There are however a few limitations that make catching up with a already on-going CM event quite challenging:
+There are however a few limitations that make catching up with a already on-going Critical Mass event quite challenging:
 - The geoposition data provided by other users sharing their location is only refreshed every 60 seconds. So if your phone is not mounted to the handlebar of your bike, you have to frequently stop and wait until the map is updated.
 - Often 'randomly distributed' dots can be seen on the map. These are the result of:
   - app users who just want to observe an on-going Critical Mass event in their city while they themselves are not participating. Specifically for this the app offers an observation mode, but people might either not be aware of this function or simply forget to switch it on
@@ -38,7 +55,7 @@ In the following we make the reasonable assumption that bike events such as a Cr
 - Then we run the [clustering algorithm](https://en.wikipedia.org/wiki/Cluster_analysis), currently [hierarchical clustering](https://en.wikipedia.org/wiki/Hierarchical_clustering) is used. The clustering algorithm has a configurable maximum distance to join a point to a cluster (or another point not yet part of a cluster). Only the current positions are taken into account for the clustering process.
 - After this procedure, the dataset will exhibit this general structure:
   - There will be groups of points that are in close proximity.
-  - On the other hand, some points are too far away from any other point. In this project, these are referred to as "single-point 'cluster'". For the following, they are not considered
+  - On the other hand, some points are too far away from any other point. For the following, they are not considered
 - At the end of this process, the dataset is partitioned into several sets of points referred to as "clusters".
 
 A reasonable starting point for selecting parameters could be
@@ -48,10 +65,7 @@ A reasonable starting point for selecting parameters could be
 * ignore "isolated" devices (devices that aren't part of any clusters)
 
 ### Examples
-| A | B |
-|---|---|
-| ![](https://obj.clsrv.de/temp/IMG_1683_edited.png) | ![](https://obj.clsrv.de/temp/analysis__20260529T2050.png) |
-| ![](https://obj.clsrv.de/temp/IMG_1691_s.png) | ![](https://obj.clsrv.de/temp/analysis__20260529T2236.png) |
+![](https://obj.clsrv.de/temp/20260617__client.png)
 
 ## Running It
 ### Installation
@@ -60,7 +74,7 @@ There are two alternative ways to run the API data import:
 * installation in a fresh virtual environment
 
 **Docker images**
-There two `Dockerfile`s: one for API data import and one for the API server
+There two `Dockerfile`s: one for API data import and one for the API server (more documentation will follow)
 
 **Installation in fresh virtual environment** using the commands:
 ```
@@ -76,25 +90,24 @@ Configuration of database access is done by adjusting the connection parameters 
 Then you can start to fill the database by running the API requestor `critical-dir-apiimport`. It periodically connects to the CriticalMaps API endpoint and stores the received information both in `.json` files and in the database.
 
 For analysis of the stored data, there are currently two ways to run the software:
-* To run the API server, either use the Docker image or run `critical-dir-api` in your virtual environment. See elsewhere in this document for documentation of URI structure and available API endpoints.
+* The preferred way is to use the API server and the [client](https://github.com/christoph-lechner/critical-dir-map). Either run the Docker image or run `critical-dir-api` in your virtual environment. The available API endpoints are documented [here](#api-endpoints).
 * For development, run the script `scripts/interactive_demo.py` on the command line. This script can serve as basis for your own analysis scripts.
 
 ### Organization of URIs
 Currently the URIs on the HTTPS Apache2 server are organized as follows:
 * `/myapp/`: top path used by the app, contains static materials, served by Apache2
 * `/myapp/api/`: forwarded to FastAPI by Apache2 acting as reverse proxy for HTTPS termination
-* `/myapp/api/objs/`: images generated by FastAPI go here, served by FastAPI
 
 ### API Endpoints
-Here we list the provided API endpoints and the implemented HTTP method.
+Here we list the API endpoints provided by the API server and the respective implemented HTTP methods.
 - `/clusters` (GET): This is the main endpoint for the clients. Get JSON data describing the identified clusters.
-- `/clusters_demo` (GET): Delivers demo data (periodic motion of clusters). Mainly for development of clients.
-- `/health` (GET/HEAD): Endpoint for health checks. Is the API server reachable? This also performs a basic check of database 'freshness'. Returns HTTP status code 200 if checks are passed and HTTP status code 500 when something is out of order. Mainly for Docker, there is also a version that does not take DB freshness into consideration (`/health\_no\_freshness\_check`, also GET/HEAD HTTP methods supported).
+- `/clusters_demo` (GET): Delivers demo data (periodic motion of clusters). Mainly for development of client software.
+- `/health` (GET/HEAD): Endpoint for health checks. Is the API server reachable? This also performs a basic check of database 'freshness'. Returns HTTP status code 200 if checks are passed and HTTP status code 500 when something is out of order. Mainly for Docker, there is also a version that does not take DB freshness into consideration (`/health_no_freshness_check`, also GET/HEAD HTTP methods supported).
 
 ## Data Downloader
-The position data processed by this software project is periodically obtained from the CriticalMaps API.
+The data processed by this software project as basis for the provided maps is periodically obtained from the CriticalMaps API.
 
-For regular operation, Docker can be used. A `docker-compose.yaml` template file is available for customization. In addition, For building the Docker image, a `Dockerfile` is available. 
+For regular operation, Docker can be used. A `docker-compose.yaml` template file is available for customization. In addition, for building the Docker image, a `Dockerfile` is available. 
 
 ### Health Monitoring
 The downloader supports HTTP Health Monitoring.

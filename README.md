@@ -90,10 +90,6 @@ Here we list the provided API endpoints and the implemented HTTP method.
 - `/clusters` (GET): This is the main endpoint for the clients. Get JSON data describing the identified clusters.
 - `/clusters_demo` (GET): Delivers demo data (periodic motion of clusters). Mainly for development of clients.
 - `/health` (GET/HEAD): Endpoint for health checks. Is the API server reachable? This also performs a basic check of database 'freshness'. Returns HTTP status code 200 if checks are passed and HTTP status code 500 when something is out of order. Mainly for Docker, there is also a version that does not take DB freshness into consideration (`/health\_no\_freshness\_check`, also GET/HEAD HTTP methods supported).
-- deprecated endpoints
-  - `/location` (POST): This was the main end point to be called by the first version of the PWA/interactive web site.
-  - `/location_demo` (GET/POST): End point for demo purposes only, uses hardcoded geolocation in Hamburg, Germany. Does return JSON data.
-  - `/inspect` (GET): (for development, disabled in normal operation) Used by the PWA/interactive website to see a cluster in more detail
 
 ## Data Downloader
 The position data processed by this software project is periodically obtained from the CriticalMaps API.

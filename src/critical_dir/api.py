@@ -287,6 +287,9 @@ def update_location_demo():
     Implements location API endpoint for DEMO
     (input: does not require coordinates, uses hard-coded user-coordinates)
     """
+    # end point is deprecated (but keeping the code for now)
+    return HTMLResponse('permission denied', status_code=403)
+
     # fixed dummy position in Hamburg for dev/demo
     user_pos = np.array([53.55, 10.0])
     ag = AlgoConfig(
@@ -302,6 +305,9 @@ def update_location(payload: LocationRequest):
     """
     Implements location API endpoint
     """
+    # end point is deprecated (but keeping the code for now)
+    return HTMLResponse('permission denied', status_code=403)
+
     user_pos = np.array([payload.latitude, payload.longitude])
     ag = AlgoConfig(
         exclude_isolated_points=payload.cfg_flag_iso,
@@ -314,6 +320,9 @@ def update_location(payload: LocationRequest):
 
 @app.get('/inspect', response_class=HTMLResponse)
 async def inspect(clat: float, clong: float):
+    # end point is deprecated (but keeping the code for now)
+    return HTMLResponse('permission denied', status_code=403)
+
     settings = get_settings()
 
     if settings.privacy_mode:

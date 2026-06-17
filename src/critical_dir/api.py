@@ -111,10 +111,16 @@ def clusters_worker(*, ag, min_cluster_size:int=3, use_simulated_data=False):
     if use_simulated_data:
         return generate_simulated_clusters()
 
-    # use DB for current positions
-    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
+    # dummy position, we only return clusters without direction information
+    user_pos = np.array([53.55, 10.0])
+
+    tnow = datetime.datetime.now()
+    # tnow = datetime.datetime(2026,6,14, 14,52, tzinfo=ZoneInfo('Europe/Berlin')) # "Sternfahrt" in Munich, Germany
+    epoch = int(tnow.timestamp())
+
+    # use DB to obtain positions data
+    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch)
     my_a = MyAnalyzer(dl=my_dl)
-    user_pos = np.array([53.55, 10.0]) # dummy position, we only return clusters without direction information
     res = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
     # print(res.cluster_infos)
 
@@ -125,14 +131,15 @@ def clusters_worker(*, ag, min_cluster_size:int=3, use_simulated_data=False):
     r = []
     for ci in res.cluster_infos:
         if ci.N<min_cluster_size:
-            continue
+            continue # ignore small clusters
+        # obtain subclusters
         subclusters = clusters_worker_fdev(res=res, cluster_ID=ci.cluster_ID, f_generate_subclusters=generate_subclusters)
         # print(subclusters)
-        r.append(
-            {'cluster_ID':ci.cluster_ID,
-             'N':ci.N, 'center_latitude':ci.latitude, 'center_longitude':ci.longitude,
-             'subclusters': subclusters
-            })
+        r.append({
+                    'cluster_ID':ci.cluster_ID,
+                    'N':ci.N, 'center_latitude':ci.latitude, 'center_longitude':ci.longitude,
+                    'subclusters': subclusters
+                })
     return r
 
 def location_worker(user_pos, *, ag):
@@ -249,7 +256,7 @@ def get_clusters(
     ag = AlgoConfig(
         exclude_isolated_points=True,
         exclude_stationary_devices=True, 
-        cluster_dist_thres=1.0,
+        cluster_dist_thres=0.5,
         device_trace_persistence=900
     )
 

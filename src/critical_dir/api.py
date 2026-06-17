@@ -38,9 +38,14 @@ class ClustersResponseItem(BaseModel):
     def float_rounded(self, value: float) -> float:
         return round(value,6)
 
+class HistoricSubclustersItem(BaseModel):
+    age: float
+    subclusters: list[SubClustersResponseItem]
+
 class ClustersResponse(BaseModel):
     info: str
     clusters: list[ClustersResponseItem]
+    historic_subclusters: list[HistoricSubclustersItem] | None=None # field is optional (appears in returned JSON with value 'null')
 
 class LocationRequest(BaseModel):
     latitude: float
@@ -109,12 +114,20 @@ def clusters_worker_fdev(*, res, cluster_ID, f_generate_subclusters):
 
 def clusters_worker(*, ag, min_cluster_size:int=3, use_simulated_data=False):
     if use_simulated_data:
-        return generate_simulated_clusters()
+        return generate_simulated_clusters(),[]
 
-    # use DB for current positions
-    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
+    # dummy position, we only return clusters without direction information
+    user_pos = np.array([53.55, 10.0])
+
+    tnow = datetime.datetime.now()
+    tnow = datetime.datetime(2026,6,14, 14,52, tzinfo=ZoneInfo('Europe/Berlin')) # "Sternfahrt" in Munich, Germany
+    tnow = datetime.datetime(2026,6,14, 14,47, tzinfo=ZoneInfo('Europe/Berlin')) # "Sternfahrt" in Munich, Germany
+    tnow = datetime.datetime(2026,6,14, 14,49, tzinfo=ZoneInfo('Europe/Berlin')) # "Sternfahrt" in Munich, Germany
+    epoch = int(tnow.timestamp())
+
+    # use DB to obtain position data
+    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch)
     my_a = MyAnalyzer(dl=my_dl)
-    user_pos = np.array([53.55, 10.0]) # dummy position, we only return clusters without direction information
     res = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
     # print(res.cluster_infos)
 
@@ -122,18 +135,44 @@ def clusters_worker(*, ag, min_cluster_size:int=3, use_simulated_data=False):
     # Some of the fields that come from the analysis process should be shadowed from the client, such as course/distance because they were computed using the dummy user_position we had to provide
     # Only clusters exceeding a minimum number of members are returned to the
     # user to prevent exposing individual positions.
-    r = []
-    for ci in res.cluster_infos:
-        if ci.N<min_cluster_size:
-            continue
-        subclusters = clusters_worker_fdev(res=res, cluster_ID=ci.cluster_ID, f_generate_subclusters=generate_subclusters)
-        # print(subclusters)
-        r.append(
-            {'cluster_ID':ci.cluster_ID,
-             'N':ci.N, 'center_latitude':ci.latitude, 'center_longitude':ci.longitude,
-             'subclusters': subclusters
-            })
-    return r
+    def fx(analysis_result):
+        r = []
+        for ci in analysis_result.cluster_infos:
+            if ci.N<min_cluster_size:
+                continue # ignore small clusters
+            # obtain subclusters
+            subclusters = clusters_worker_fdev(res=analysis_result, cluster_ID=ci.cluster_ID, f_generate_subclusters=generate_subclusters)
+            # print(subclusters)
+            r.append({
+                        'cluster_ID':ci.cluster_ID,
+                        'N':ci.N, 'center_latitude':ci.latitude, 'center_longitude':ci.longitude,
+                        'subclusters': subclusters
+                    })
+        return r
+
+    r = fx(res)
+
+    ages = [300,600]
+    r_h = []
+    for age in ages:
+        if age<0:
+            raise ValueError('age has to be positive')
+
+        my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch-age)
+        my_a = MyAnalyzer(dl=my_dl)
+        res_historic = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
+
+        # TODO: find better variable names, these are confusing: r_historic,res_historic and on the other hand r_h for the final result
+        r_historic = fx(res_historic)
+
+        # every historic cluster has a set subclusters -> join them to one big set of subclusters (this is ok as the number of clusters might have changed between the points in time and so it is not trivial to relate current and historic clusters)
+        l_sc = []
+        for c in r_historic:
+            for _ in c['subclusters']:
+                l_sc.append(_)
+        r_h.append({'age':age, 'subclusters': l_sc})
+    # print(r_h)
+    return r, r_h
 
 def location_worker(user_pos, *, ag):
     # store timestamp
@@ -231,7 +270,7 @@ def location_worker(user_pos, *, ag):
 
 @app.get('/clusters_demo', response_model=ClustersResponse)
 def get_clusters_demo():
-    clusters = clusters_worker(ag=None, use_simulated_data=True)
+    clusters,_ = clusters_worker(ag=None, use_simulated_data=True)
     r = {
         # only parameters influencing the result (we enforce min cluster size -> irrelevant if isolated points are excluded by clustering algorithm or no; not using any trace persistence here)
         'info': f'd=1.0, x=True',
@@ -249,7 +288,7 @@ def get_clusters(
     ag = AlgoConfig(
         exclude_isolated_points=True,
         exclude_stationary_devices=True, 
-        cluster_dist_thres=1.0,
+        cluster_dist_thres=0.5,
         device_trace_persistence=900
     )
 
@@ -267,14 +306,16 @@ def get_clusters(
 
     # run clustering algorithm (and catch exception raised if there is insufficient amount of data)
     try:
-        clusters = clusters_worker(ag=ag, min_cluster_size=3)
+        clusters,l_historic_subclusters = clusters_worker(ag=ag, min_cluster_size=3)
     except EInsufficientData:
         clusters = []
+        l_historic_subclusters = []
 
     r = {
         # only parameters influencing the result (we enforce min cluster size -> irrelevant if isolated points are excluded by clustering algorithm or no; not using any trace persistence here)
         'info': f'd={ag.cluster_dist_thres}, x={ag.exclude_stationary_devices}',
-        'clusters': clusters
+        'clusters': clusters,
+        'historic_subclusters': l_historic_subclusters
     }
     # Note: we don't include lat/long of all cluster members in response (privacy)
     return r

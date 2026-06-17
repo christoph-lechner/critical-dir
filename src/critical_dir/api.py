@@ -120,21 +120,22 @@ def clusters_worker(*, ag, min_cluster_size:int=3, use_simulated_data=False):
     user_pos = np.array([53.55, 10.0])
 
     tnow = datetime.datetime.now()
-    tnow = datetime.datetime(2026,6,14, 14,52, tzinfo=ZoneInfo('Europe/Berlin')) # "Sternfahrt" in Munich, Germany
-    tnow = datetime.datetime(2026,6,14, 14,47, tzinfo=ZoneInfo('Europe/Berlin')) # "Sternfahrt" in Munich, Germany
-    tnow = datetime.datetime(2026,6,14, 14,49, tzinfo=ZoneInfo('Europe/Berlin')) # "Sternfahrt" in Munich, Germany
+    #tnow = datetime.datetime(2026,6,14, 14,52, tzinfo=ZoneInfo('Europe/Berlin')) # "Sternfahrt" in Munich, Germany
+    #tnow = datetime.datetime(2026,6,14, 14,47, tzinfo=ZoneInfo('Europe/Berlin')) # "Sternfahrt" in Munich, Germany
+    #tnow = datetime.datetime(2026,6,14, 14,49, tzinfo=ZoneInfo('Europe/Berlin')) # "Sternfahrt" in Munich, Germany
     epoch = int(tnow.timestamp())
 
     # use DB to obtain position data
-    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch)
+    # my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch)
+    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
     my_a = MyAnalyzer(dl=my_dl)
     res = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
     # print(res.cluster_infos)
 
     age = 600
-    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch-age)
-    my_a = MyAnalyzer(dl=my_dl)
-    res_historic = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
+    #my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch-age)
+    #my_a = MyAnalyzer(dl=my_dl)
+    #res_historic = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
 
     # To be JSON serializable, the returned object has to be an instance of the defined pydantic class.
     # Some of the fields that come from the analysis process should be shadowed from the client, such as course/distance because they were computed using the dummy user_position we had to provide
@@ -156,13 +157,15 @@ def clusters_worker(*, ag, min_cluster_size:int=3, use_simulated_data=False):
         return r
 
     r = fx(res)
-    r_historic = fx(res_historic)
+    # r_historic = fx(res_historic)
 
     # every historic cluster has a set subclusters -> join them to one big set of subclusters (this is ok as the number of clusters might have changed between the points in time and so it is not trivial to relate current and historic clusters)
     l_sc = []
+    """
     for c in r_historic:
         for _ in c['subclusters']:
             l_sc.append(_)
+    """
     historic_subclusters = {'age':age, 'subclusters': l_sc}
     return r, [historic_subclusters]
 

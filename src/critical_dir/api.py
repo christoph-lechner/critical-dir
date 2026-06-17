@@ -131,11 +131,6 @@ def clusters_worker(*, ag, min_cluster_size:int=3, use_simulated_data=False):
     res = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
     # print(res.cluster_infos)
 
-    age = 600
-    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch-age)
-    my_a = MyAnalyzer(dl=my_dl)
-    res_historic = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
-
     # To be JSON serializable, the returned object has to be an instance of the defined pydantic class.
     # Some of the fields that come from the analysis process should be shadowed from the client, such as course/distance because they were computed using the dummy user_position we had to provide
     # Only clusters exceeding a minimum number of members are returned to the
@@ -156,15 +151,28 @@ def clusters_worker(*, ag, min_cluster_size:int=3, use_simulated_data=False):
         return r
 
     r = fx(res)
-    r_historic = fx(res_historic)
 
-    # every historic cluster has a set subclusters -> join them to one big set of subclusters (this is ok as the number of clusters might have changed between the points in time and so it is not trivial to relate current and historic clusters)
-    l_sc = []
-    for c in r_historic:
-        for _ in c['subclusters']:
-            l_sc.append(_)
-    historic_subclusters = {'age':age, 'subclusters': l_sc}
-    return r, [historic_subclusters]
+    ages = [300,600]
+    r_h = []
+    for age in ages:
+        if age<0:
+            raise ValueError('age has to be positive')
+
+        my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch-age)
+        my_a = MyAnalyzer(dl=my_dl)
+        res_historic = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
+
+        # TODO: find better variable names, these are confusing: r_historic,res_historic and on the other hand r_h for the final result
+        r_historic = fx(res_historic)
+
+        # every historic cluster has a set subclusters -> join them to one big set of subclusters (this is ok as the number of clusters might have changed between the points in time and so it is not trivial to relate current and historic clusters)
+        l_sc = []
+        for c in r_historic:
+            for _ in c['subclusters']:
+                l_sc.append(_)
+        r_h.append({'age':age, 'subclusters': l_sc})
+    # print(r_h)
+    return r, r_h
 
 def location_worker(user_pos, *, ag):
     # store timestamp

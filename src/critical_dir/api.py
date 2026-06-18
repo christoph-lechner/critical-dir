@@ -129,12 +129,23 @@ def clusters_worker(*, ag, min_cluster_size:int=3, use_simulated_data=False):
     my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch)
     my_a = MyAnalyzer(dl=my_dl)
     res = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
-    # print(res.cluster_infos)
+    print('API worker 1: '+str(res.cluster_infos))
+
+    from copy import deepcopy
+    copy_ci = deepcopy(res.cluster_infos)
+    def f_dbg_check():
+        print('*** ENTERING fdbg ***')
+        print(copy_ci)
+        print(res.cluster_infos)
+        print('*** LEAVING fdbg ***')
+        return
 
     age = 600
     my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch-age)
     my_a = MyAnalyzer(dl=my_dl)
-    # res_historic = my_a.perform_analysis(observer_pos=user_pos, ag=ag) # <-- if this line is active, test fails!
+    print('API worker 2: '+str(res.cluster_infos))
+    res_historic = my_a.perform_analysis(observer_pos=user_pos, ag=ag, fdbg=f_dbg_check) # <-- if this line is active, test fails!
+    print('API worker 3: '+str(res.cluster_infos))
 
     # To be JSON serializable, the returned object has to be an instance of the defined pydantic class.
     # Some of the fields that come from the analysis process should be shadowed from the client, such as course/distance because they were computed using the dummy user_position we had to provide
@@ -302,6 +313,7 @@ def get_clusters(
     try:
         clusters,l_historic_subclusters = clusters_worker(ag=ag, min_cluster_size=3)
     except EInsufficientData:
+        print('Info: got exception EInsufficientData')
         clusters = []
         l_historic_subclusters = []
 

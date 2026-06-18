@@ -340,9 +340,15 @@ class MyAnalyzer:
         self.fprefix = fprefix
         self.obj_path = obj_path
 
-    def perform_analysis(self, *, observer_pos, ag: AlgoConfig):
+    def perform_analysis(self, *, observer_pos, ag: AlgoConfig, fdbg=None):
         if not isinstance(self.dl, DataLoader):
             raise ValueError('expecting DataLoader object')
+
+        def call_fdbg():
+            if fdbg and callable(fdbg):
+                fdbg()
+
+        call_fdbg()
 
         ### HERE WE COLLECT INFOS TO BE RETURNED TO CALLER (= the client via the API server) ###
         diag_info = []
@@ -435,6 +441,7 @@ class MyAnalyzer:
             cluster_infos.append(curr_ci)
 
 
+        call_fdbg()
         print('TODO: record diag_info somewhere')
         return MyResult(
             data_timestamp=data_timestamp_load,

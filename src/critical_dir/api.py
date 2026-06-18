@@ -144,7 +144,14 @@ def clusters_worker(*, ag, min_cluster_size:int=3, use_simulated_data=False):
     my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch-age)
     my_a = MyAnalyzer(dl=my_dl)
     print('API worker 2: '+str(res.cluster_infos))
-    res_historic = my_a.perform_analysis(observer_pos=user_pos, ag=ag, fdbg=f_dbg_check) # <-- if this line is active, test fails!
+    # If we arrive here, sufficient data was there for the time of interest (typically this means "live data").
+    # But it might still throw an exception signalling insufficient data for any requests for historic data.
+    # An important case where this becomes relevant is automatic testing of Docker images.
+    # -> In this case, execution of the function must continue.
+    try:
+        res_historic = my_a.perform_analysis(observer_pos=user_pos, ag=ag, fdbg=f_dbg_check) # <-- if this line is active, test fails!
+    except EInsufficientData:
+        pass
     print('API worker 3: '+str(res.cluster_infos))
 
     # To be JSON serializable, the returned object has to be an instance of the defined pydantic class.

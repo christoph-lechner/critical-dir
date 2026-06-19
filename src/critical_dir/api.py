@@ -69,7 +69,8 @@ app = FastAPI(
     openapi_url=None,       # disables /openapi.json
 )
 
-app.mount('/objs', StaticFiles(directory='objs'), name='objs')
+# v1 of the web client is not deprecated, so /objs is not needed anymore
+# app.mount('/objs', StaticFiles(directory='objs'), name='objs')
 
 @app.get('/', response_class=HTMLResponse)
 async def req_catch_all(request: Request):

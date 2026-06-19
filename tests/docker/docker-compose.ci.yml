@@ -25,7 +25,7 @@ services:
 
   cdir_api_server:
     build:
-      context: ../
+      context: ../../
       dockerfile: Dockerfile.api
     environment:
       # Note: do not quote the DSN.
@@ -46,7 +46,7 @@ services:
   # for tests: base parameters are identical to API server config
   tests:
     build:
-      context: ../
+      context: ../../
       dockerfile: Dockerfile.api
     environment:
       - TEST_APIURL=http://cdir_api_server:8081/
@@ -57,7 +57,7 @@ services:
       - pytest
       # there are issues with pytest's cache because of permissions (can't write to /app)
       - -p no:cacheprovider
-      - /app/tests_docker/
+      - /app/tests/docker/
     depends_on:
       pgdatabase:
         condition: service_healthy

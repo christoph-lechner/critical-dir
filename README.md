@@ -57,7 +57,7 @@ A reasonable starting point for selecting parameters could be
 - PostgreSQL v18
 - Python 3.10 or newer
   - notable packages used: FastAPI, scikit-learn, psycopg, pytest
-- Test automatization using GitHub Actions
+- Test automatization using GitHub Actions, see [here](#cicd) for more information
 - The [web client](https://github.com/christoph-lechner/critical-dir-map) is implemented using HTML, JavaScript, and [Leaflet](https://leafletjs.com/)
 
 ### CI/CD
@@ -100,7 +100,7 @@ Currently the URIs on the HTTPS Apache2 server are organized as follows:
 
 ### API Endpoints
 Here we list the API endpoints provided by the API server and the respective implemented HTTP methods.
-- `/clusters` (GET): This is the main endpoint for the clients. Get JSON data describing the identified clusters.
+- `/clusters` (GET): This is the main endpoint for the [clients](https://github.com/christoph-lechner/critical-dir-map). Get JSON data describing the identified clusters.
 - `/clusters_demo` (GET): Delivers demo data (periodic motion of clusters). Mainly for development of client software.
 - `/health` (GET/HEAD): Endpoint for health checks. Is the API server reachable? This also performs a basic check of database 'freshness'. Returns HTTP status code 200 if checks are passed and HTTP status code 500 when something is out of order. Mainly for Docker, there is also a version that does not take DB freshness into consideration (`/health_no_freshness_check`, also GET/HEAD HTTP methods supported).
 

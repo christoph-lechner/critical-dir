@@ -22,7 +22,17 @@ If you need to debug this test setup, you can launch the containers
 ```
 docker compose -f ./tests_docker/docker-compose.ci.yml up
 ```
-and then inspect, for instance, the DB.
+and do the needed debugging. Keep in mind that the timestamps of the entries in the test database are only adjusted at start-up time, so they are only good for a few minutes.
+
+### Running pytest
+One thing you can do is manually running `pytest` outside of your container on the console. For instance in the root of the cloned repository:
+```
+pytest tests_docker/
+```
+This allows to interactively debug the tests.
+
+### Inspecting the DB
+Furthermore, if needed you can inspect the contents of the DB.
 Connect to the container running the postgres DB (use `docker ps` to determine the hex id string as there might be multiple) and have a look into the DB:
 ```
 cl@clpc:/tmp$ docker exec -it debf82e89320 /bin/bash
@@ -42,6 +52,7 @@ testdb=# SELECT * FROM criticalmaps_data;
 testdb=#
 ```
 
+### Checking logs
 If you wish to see the logs of the previous run, use
 ```
 docker compose -f ./tests_docker/docker-compose.ci.yml logs cdir_api_server

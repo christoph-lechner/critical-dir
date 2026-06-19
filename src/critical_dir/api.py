@@ -120,9 +120,7 @@ def clusters_worker(*, ag, min_cluster_size:int=3, use_simulated_data=False):
     user_pos = np.array([53.55, 10.0])
 
     tnow = datetime.datetime.now()
-    tnow = datetime.datetime(2026,6,14, 14,52, tzinfo=ZoneInfo('Europe/Berlin')) # "Sternfahrt" in Munich, Germany
-    tnow = datetime.datetime(2026,6,14, 14,47, tzinfo=ZoneInfo('Europe/Berlin')) # "Sternfahrt" in Munich, Germany
-    tnow = datetime.datetime(2026,6,14, 14,49, tzinfo=ZoneInfo('Europe/Berlin')) # "Sternfahrt" in Munich, Germany
+    #tnow = datetime.datetime(2026,6,14, 14,49, tzinfo=ZoneInfo('Europe/Berlin')) # "Sternfahrt" in Munich, Germany
     epoch = int(tnow.timestamp())
 
     # use DB to obtain position data
@@ -158,9 +156,20 @@ def clusters_worker(*, ag, min_cluster_size:int=3, use_simulated_data=False):
         if age<0:
             raise ValueError('age has to be positive')
 
-        my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch-age)
-        my_a = MyAnalyzer(dl=my_dl)
-        res_historic = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
+        # If we arrive here, sufficient data was there for the time of interest
+        # (typically this means "live data").
+        # But it might still throw an exception signalling insufficient data
+        # for any requests for historic data. An important case where this
+        # becomes relevant is automatic testing of Docker images.
+        # -> In these cases, execution of the function must continue.
+        try:
+            my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch-age)
+            my_a = MyAnalyzer(dl=my_dl)
+            res_historic = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
+        except EInsufficientData:
+            # There is not enough data to cluster.
+            # Try next set of historic data.
+            continue
 
         # TODO: find better variable names, these are confusing: r_historic,res_historic and on the other hand r_h for the final result
         r_historic = fx(res_historic)

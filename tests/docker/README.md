@@ -10,24 +10,24 @@ After building the image, the tests are executed **in the directory layout of th
 ## Manual development/testing of the process
 While developing this process, the commands listed below were used (no `docker compose up` is issued, all commands are executed in the top directory of the project/repository). These commands can also be used to test any changes to the code before pushing to Github.
 ```
-docker compose -f ./tests_docker/docker-compose.ci.yml build
+docker compose -f ./tests/docker/docker-compose.ci.yml build
 
 # also starts depending services (they continue to run)
-docker compose -f ./tests_docker/docker-compose.ci.yml run --rm tests
+docker compose -f ./tests/docker/docker-compose.ci.yml run --rm tests
 
-docker compose -f ./tests_docker/docker-compose.ci.yml down -v
+docker compose -f ./tests/docker/docker-compose.ci.yml down -v
 ```
 ## Debugging
 If you need to debug this test setup, you can launch the containers
 ```
-docker compose -f ./tests_docker/docker-compose.ci.yml up
+docker compose -f ./tests/docker/docker-compose.ci.yml up
 ```
 and do the needed debugging. Keep in mind that the timestamps of the entries in the test database are only adjusted at start-up time, so they are only good for a few minutes.
 
 ### Running pytest
 One thing you can do is manually running `pytest` outside of your container on the console. For instance in the root of the cloned repository:
 ```
-pytest tests_docker/
+pytest tests/docker/
 ```
 This allows to interactively debug the tests.
 
@@ -55,7 +55,7 @@ testdb=#
 ### Checking logs
 If you wish to see the logs of the previous run, use
 ```
-docker compose -f ./tests_docker/docker-compose.ci.yml logs cdir_api_server
+docker compose -f ./tests/docker/docker-compose.ci.yml logs cdir_api_server
 ```
 
 

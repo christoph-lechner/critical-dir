@@ -34,23 +34,23 @@ jobs:
       # - Then pass name of this image to docker-compose.ci.yml execution.
       # - Finally push this image to dockerhub.
       - name: "Docker image: build image for tests"
-        run: docker compose -f ./tests_docker/docker-compose.ci.yml build
+        run: docker compose -f ./tests/docker/docker-compose.ci.yml build
 
       # also starts depending services (they continue to run)
       - name: "Docker image: run tests"
-        run: docker compose -f ./tests_docker/docker-compose.ci.yml run --rm tests
+        run: docker compose -f ./tests/docker/docker-compose.ci.yml run --rm tests
 
       - name: "Docker image: shutdown stack used for tests"
         if: always()
-        run: docker compose -f ./tests_docker/docker-compose.ci.yml down -v
+        run: docker compose -f ./tests/docker/docker-compose.ci.yml down -v
 
       - name: "Docker image: show API logs"
         if: always()
-        run: docker compose -f ./tests_docker/docker-compose.ci.yml logs cdir_api_server
+        run: docker compose -f ./tests/docker/docker-compose.ci.yml logs cdir_api_server
 
       #- name: "Docker image: show postgres logs"
       #  if: always()
-      #  run: docker compose -f ./tests_docker/docker-compose.ci.yml logs cdir_api_server
+      #  run: docker compose -f ./tests/docker/docker-compose.ci.yml logs cdir_api_server
 
       # Only if tests passed, we continue with building and pushing the image
       # to be uploaded to Dockerhub

@@ -2,12 +2,12 @@
 Christoph Lechner, 18 June 2026
 
 ## Table of Contents
-- [Description](#description)
-  - [Technologies used](#technologies-used)
-  - [Testing](#testing)
 - [Motivation and Solution](#motivation-and-solution)
   - [Applied solution](#applied-solution)
   - [Examples](#examples)
+- [Description](#description)
+  - [Technologies used](#technologies-used)
+  - [CI/CD](#cicd)
 - [Running It](#running-it)
   - [Installation](#installation)
   - [Running it](#running-it-1)
@@ -15,26 +15,6 @@ Christoph Lechner, 18 June 2026
   - [API Endpoints](#api-endpoints)
 - [Data Downloader](#data-downloader)
   - [Health Monitoring](#health-monitoring)
-
-
-## Description
-![system layout](doc/img/schematic.png)
-
-### Technologies used
-- OS: Ubuntu Server 24.04 LTS
-- Docker
-- PostgreSQL v18
-- Python 3.10 or newer
-  - notable packages used: FastAPI, scikit-learn, psycopg, pytest
-- Test automatization using GitHub Actions
-- The [web client](https://github.com/christoph-lechner/critical-dir-map) is implemented using HTML, JavaScript, and [Leaflet](https://leafletjs.com/)
-
-### Testing
-As part of the GitHub Actions workflow triggered by pushes to the `master` branch, a Docker image containing the API server is generated.
-To verify the core functionality of this image, it is started alongside a PostgreSQL container populated with a test dataset.
-Automated tests send HTTP requests to the core `/clusters` API endpoint with different request parameters and validate the responses against expected results.
-Only images that successfully pass these tests are published to DockerHub.
-
 
 ## Motivation and Solution
 The open-source project [CriticalMaps](https://www.criticalmaps.net/) ([repositories on github](https://github.com/criticalmaps/)) enables participants of ["Critical Mass"](https://en.wikipedia.org/wiki/Critical_Mass_(cycling)) events to share their current location with others on an interactive map.
@@ -66,6 +46,26 @@ A reasonable starting point for selecting parameters could be
 
 ### Examples
 ![](https://obj.clsrv.de/temp/20260617__client.png)
+
+
+## Description
+![system layout](doc/img/schematic.png)
+
+### Technologies used
+- OS: Ubuntu Server 24.04 LTS
+- Docker
+- PostgreSQL v18
+- Python 3.10 or newer
+  - notable packages used: FastAPI, scikit-learn, psycopg, pytest
+- Test automatization using GitHub Actions, see [here](#cicd) for more information
+- The [web client](https://github.com/christoph-lechner/critical-dir-map) is implemented using HTML, JavaScript, and [Leaflet](https://leafletjs.com/)
+
+### CI/CD
+As part of the GitHub Actions workflow triggered by pushes to the `master` branch, a Docker image containing the API server is generated.
+To verify the core functionality of this image, it is started alongside a PostgreSQL container populated with a test dataset.
+Automated tests send HTTP requests to the core `/clusters` API endpoint with different request parameters and validate the responses against expected results.
+Only images that successfully pass these tests are published to DockerHub.
+
 
 ## Running It
 ### Installation
@@ -100,7 +100,7 @@ Currently the URIs on the HTTPS Apache2 server are organized as follows:
 
 ### API Endpoints
 Here we list the API endpoints provided by the API server and the respective implemented HTTP methods.
-- `/clusters` (GET): This is the main endpoint for the clients. Get JSON data describing the identified clusters.
+- `/clusters` (GET): This is the main endpoint for the [clients](https://github.com/christoph-lechner/critical-dir-map). Get JSON data describing the identified clusters.
 - `/clusters_demo` (GET): Delivers demo data (periodic motion of clusters). Mainly for development of client software.
 - `/health` (GET/HEAD): Endpoint for health checks. Is the API server reachable? This also performs a basic check of database 'freshness'. Returns HTTP status code 200 if checks are passed and HTTP status code 500 when something is out of order. Mainly for Docker, there is also a version that does not take DB freshness into consideration (`/health_no_freshness_check`, also GET/HEAD HTTP methods supported).
 

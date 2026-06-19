@@ -112,15 +112,18 @@ def clusters_worker_fdev(*, res, cluster_ID, f_generate_subclusters):
     return f_generate_subclusters(data=data_in_cluster)
 
 
-def clusters_worker(*, ag, min_cluster_size:int=3, use_simulated_data=False):
+def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, use_simulated_data=False):
     if use_simulated_data:
         return generate_simulated_clusters(),[]
 
     # dummy position, we only return clusters without direction information
     user_pos = np.array([53.55, 10.0])
 
-    tnow = datetime.datetime.now()
-    #tnow = datetime.datetime(2026,6,14, 14,49, tzinfo=ZoneInfo('Europe/Berlin')) # "Sternfahrt" in Munich, Germany
+    tnow = datetime.datetime.now(tz=ZoneInfo('Europe/Berlin')) # need to specify timezone for comparison operations
+    if t0:
+        if t0>tnow:
+            raise ValueError('provided time-stamp is from the future')
+        tnow = t0
     epoch = int(tnow.timestamp())
 
     # use DB to obtain position data
@@ -315,6 +318,8 @@ def get_clusters(
 
     # run clustering algorithm (and catch exception raised if there is insufficient amount of data)
     try:
+        # tnow = datetime.datetime(2026,6,14, 14,49, tzinfo=ZoneInfo('Europe/Berlin')) # "Sternfahrt" in Munich, Germany
+        # clusters,l_historic_subclusters = clusters_worker(ag=ag, min_cluster_size=3, t0=tnow)
         clusters,l_historic_subclusters = clusters_worker(ag=ag, min_cluster_size=3)
     except EInsufficientData:
         clusters = []

@@ -80,6 +80,25 @@ app = FastAPI(
 app.state.server_settings = ServerSettings()
 app.state.lock_server_settings = Lock()
 
+
+
+import json
+from redis import Redis
+from redis.exceptions import LockError
+redis = Redis(host='localhost', port=6379, decode_responses=True)
+
+# for instance, json.dumps does not know what to do with np.int64.
+class MyJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            # print('got an int')
+            return int(obj)
+        if isinstance(obj, np.floating):
+            # print('got an float')
+            return float(obj)
+        return suprt().default(obj)
+
+
 # v1 of the web client is not deprecated, so /objs is not needed anymore
 # app.mount('/objs', StaticFiles(directory='objs'), name='objs')
 
@@ -179,7 +198,50 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
         q = transform_data(res)
         return q
 
-    r = get_analyzed_and_transformed_data(t0=epoch)
+    def cached__get_analyzed_and_transformed_data(t0, ttl=30):
+        """
+        For now, synchronous version
+        """
+        key = f'{t0}'
+
+        cached = redis.get(key)
+        if cached:
+            print(f'*** cache hit, key={key}')
+            cached = json.loads(cached)
+            if 'got_exception' in cached:
+                raise EInsufficientData('')
+            return cached
+
+        # the blocking_timeset is set to several times the expected worst-case time
+        lock = redis.lock(f'lock:{key}', timeout=900, blocking_timeout=200)
+        try:
+            with lock:
+                print('got the lock')
+
+                # see if any other process computed it while we were waiting to enter this section
+                cached = redis.get(key)
+                if cached:
+                    return json.loads(cached)
+
+                try:
+                    print('running the comptation')
+                    result = get_analyzed_and_transformed_data(t0)
+                except EInsufficientData:
+                    print('got exception')
+                    result = {'got_exception':True}
+                    raise
+                finally:
+                    print(f'*** storing data in cache, key={key}')
+                    redis.set(key, json.dumps(result, cls=MyJSONEncoder), ex=ttl)
+
+                cached = redis.get(key)
+                return json.loads(cached)
+
+        except LockError:
+            raise TimeoutError('unable to acquire lock')
+
+    # most recent data is cached with a short time-to-live
+    r = cached__get_analyzed_and_transformed_data(t0=epoch, ttl=30)
 
     ages = [300,600]
     r_h = []
@@ -195,25 +257,13 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
         # -> In these cases, execution of the function must continue.
         try:
             # TODO: find better variable names, these are confusing: r_historic,res_historic and on the other hand r_h for the final result
-            r_historic = get_analyzed_and_transformed_data(t0=epoch-age)
+
+            # using longer cache time-to-live here (not expecting updates of underlying data here)
+            r_historic = cached__get_analyzed_and_transformed_data(t0=epoch-age, ttl=900)
         except EInsufficientData:
             # There is not enough data to cluster.
             # Try next set of historic data.
             continue
-
-        """
-        try:
-            my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch-age)
-            my_a = MyAnalyzer(dl=my_dl)
-            res_historic = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
-        except EInsufficientData:
-            # There is not enough data to cluster.
-            # Try next set of historic data.
-            continue
-
-        # TODO: find better variable names, these are confusing: r_historic,res_historic and on the other hand r_h for the final result
-        r_historic = transform_data(res_historic)
-        """
 
         # every historic cluster has a set subclusters
         # -> join them to one big set of subclusters

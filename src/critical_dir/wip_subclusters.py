@@ -23,7 +23,7 @@ def generate_subclusters(*, data, nmin=3, nmax=5, do_plot=False):
 
     data_lat = np.array([_['latitude']  for _ in data])
     data_lon = np.array([_['longitude'] for _ in data])
-    print(f'number of datapoints {len(data_lat)}')
+    # print(f'number of datapoints {len(data_lat)}')
     if do_plot:
         fig,hax=plt.subplots(1)
         hax.plot(data_lon,data_lat,'.')
@@ -66,18 +66,6 @@ def generate_subclusters(*, data, nmin=3, nmax=5, do_plot=False):
                 return 32700+zone
         
         utm_crs = CRS.from_epsg(get_utm_epsg_from_latlng(sample_lat,sample_lon))
-        """
-        utm_crs_list = query_utm_crs_info(
-                datum_name='WGS 84',
-                area_of_interest = AreaOfInterest(
-                    west_lon_degree  = sample_lon,
-                    south_lat_degree = sample_lat,
-                    east_lon_degree  = sample_lon,
-                    north_lat_degree = sample_lat,
-                ),
-        )
-        utm_crs = CRS.from_epsg(utm_crs_list[0].code)
-        """
 
     # Transform the data to x/y
     transformer = Transformer.from_crs(crs_wgs84, utm_crs, always_xy=True)
@@ -136,7 +124,7 @@ def generate_subclusters(*, data, nmin=3, nmax=5, do_plot=False):
 
     tend = datetime.datetime.now()
     deltat = (tend-tstart).total_seconds()
-    print(f'*** time needed for clustering {deltat:.3f}s ***')
+    # print(f'*** time needed for clustering {deltat:.3f}s ***')
 
 
     ##################################

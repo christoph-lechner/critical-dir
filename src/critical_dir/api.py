@@ -167,8 +167,8 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
                 second=(dt.second // 15) * 15,
                 microsecond=0,
         )
-    # epoch = int( timestamp_floor(tnow).timestamp() )
-    epoch = int( tnow.timestamp() )
+    epoch = int( timestamp_floor(tnow).timestamp() )
+    # epoch = int( tnow.timestamp() )
 
     # To be JSON serializable, the returned object has to be an instance of the defined pydantic class.
     # Some of the fields that come from the analysis process should be shadowed from the client, such as course/distance because they were computed using the dummy user_position we had to provide
@@ -240,8 +240,8 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
         except LockError:
             raise TimeoutError('unable to acquire lock')
 
-    # most recent data is cached with a short time-to-live
-    r = cached__get_analyzed_and_transformed_data(t0=epoch, ttl=30)
+    # most recent data is cached with a short time-to-live (client refresh period is 30 seconds, using a little-bit-longer value so that the actual computation is not always triggered by the same client)
+    r = cached__get_analyzed_and_transformed_data(t0=epoch, ttl=35)
 
     ages = [300,600]
     r_h = []

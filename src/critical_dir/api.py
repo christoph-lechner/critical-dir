@@ -11,6 +11,8 @@ import numpy as np
 from pathlib import Path
 import datetime
 from zoneinfo import ZoneInfo
+from dataclasses import dataclass
+from threading import Lock # for dataclass holding settings
 
 from critical_dir.criticaldir_core import MyAnalyzer,MyPlotter,DataLoaderDB,AlgoConfig
 from critical_dir.db_conn import get_db_conn
@@ -47,6 +49,10 @@ class ClustersResponse(BaseModel):
     clusters: list[ClustersResponseItem]
     historic_subclusters: list[HistoricSubclustersItem] | None=None # field is optional (appears in returned JSON with value 'null')
 
+class SetT0Request(BaseModel):
+    t0: datetime.datetime
+    reset: bool=False
+
 class LocationRequest(BaseModel):
     latitude: float
     longitude: float
@@ -61,13 +67,18 @@ class LocationResponse(BaseModel):
     html: str
     diag: str
 
-
+# temporary solution: implementation of settings for FastAPI server with single worker process
+@dataclass
+class ServerSettings:
+    t0: datetime.datetime = None
 
 app = FastAPI(
     docs_url=None,          # disables /docs
     redoc_url=None,         # disables /redoc
     openapi_url=None,       # disables /openapi.json
 )
+app.state.server_settings = ServerSettings()
+app.state.lock_server_settings = Lock()
 
 # v1 of the web client is not deprecated, so /objs is not needed anymore
 # app.mount('/objs', StaticFiles(directory='objs'), name='objs')
@@ -319,22 +330,47 @@ def get_clusters(
 
     # run clustering algorithm (and catch exception raised if there is insufficient amount of data)
     try:
-        # tnow = datetime.datetime(2026,6,14, 14,49, tzinfo=ZoneInfo('Europe/Berlin')) # "Sternfahrt" in Munich, Germany
-        # clusters,l_historic_subclusters = clusters_worker(ag=ag, min_cluster_size=3, t0=tnow)
-        clusters,l_historic_subclusters = clusters_worker(ag=ag, min_cluster_size=3)
+        t0 = None
+        with app.state.lock_server_settings:
+            t0 = app.state.server_settings.t0
+        clusters,l_historic_subclusters = clusters_worker(ag=ag, min_cluster_size=3, t0=t0)
     except EInsufficientData:
         clusters = []
         l_historic_subclusters = []
 
+    # only parameters influencing the result (we enforce min cluster size -> irrelevant if isolated points are excluded by clustering algorithm or no; not using any trace persistence here)
+    l_info_txt = [f'd={ag.cluster_dist_thres}', f'x={ag.exclude_stationary_devices}']
+    if t0:
+        l_info_txt.append(f't0="{t0}"')
     r = {
-        # only parameters influencing the result (we enforce min cluster size -> irrelevant if isolated points are excluded by clustering algorithm or no; not using any trace persistence here)
-        'info': f'd={ag.cluster_dist_thres}, x={ag.exclude_stationary_devices}',
+        'info': ', '.join(l_info_txt),
         'clusters': clusters,
         'historic_subclusters': l_historic_subclusters
     }
     # Note: we don't include lat/long of all cluster members in response (privacy)
     return r
 
+@app.post('/set_t0')
+def set_t0(payload: SetT0Request):
+    """
+    expecting timestamp in ISO format, for instance:
+    curl -X POST \
+         -H "Content-Type: application/json" \
+         -d '{"t0":"2026-06-14T14:50"}' \
+         "http://localhost:8081/set_t0"
+    """
+    if payload.reset:
+        t0 = None
+    else:
+        try:
+            t0 = payload.t0
+            # t0 = datetime.fromisoformat(payload.t0)
+            t0 = t0.replace(tzinfo=ZoneInfo("Europe/Berlin"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail='unable to process timestamp')
+    # update the settings variable
+    with app.state.lock_server_settings:
+        app.state.server_settings.t0 = t0
 
 @app.post('/location_demo', response_model=LocationResponse)
 @app.get('/location_demo', response_model=LocationResponse)

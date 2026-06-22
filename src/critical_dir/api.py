@@ -136,7 +136,20 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
         if t0>tnow:
             raise ValueError('provided time-stamp is from the future')
         tnow = t0
-    epoch = int(tnow.timestamp())
+
+    # For any caching scheme to be efficient:
+    # If the underlying raw data is updated only every 30 seconds or so,
+    # it is reasonable to run the analysis only for discrete steps in time.
+    # Only then we will have a reasonable fraction of cache hits.
+    # Using 'ceil' for the timestamp is not reasonable because then it is almost certain that fresh data comes that was of course not considered when preparing the computation result in the cache.
+    # On the other hand, using 'floor', there may still be data coming late, but it is not almost certain. Using a short TTL here (similar to "quantization" used when floor-ing).
+    def timestamp_floor(dt):
+        return dt.replace(
+                second=(dt.second // 15) * 15,
+                microsecond=0,
+        )
+    # epoch = int( timestamp_floor(tnow).timestamp() )
+    epoch = int( tnow.timestamp() )
 
     # use DB to obtain position data
     my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch)

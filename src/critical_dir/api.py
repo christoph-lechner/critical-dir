@@ -172,7 +172,7 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
 
     def get_analyzed_and_transformed_data(t0):
         # use DB to obtain position data
-        my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch)
+        my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=t0)
         my_a = MyAnalyzer(dl=my_dl)
         res = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
         # print(res.cluster_infos)

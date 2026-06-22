@@ -151,17 +151,11 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
     # epoch = int( timestamp_floor(tnow).timestamp() )
     epoch = int( tnow.timestamp() )
 
-    # use DB to obtain position data
-    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch)
-    my_a = MyAnalyzer(dl=my_dl)
-    res = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
-    # print(res.cluster_infos)
-
     # To be JSON serializable, the returned object has to be an instance of the defined pydantic class.
     # Some of the fields that come from the analysis process should be shadowed from the client, such as course/distance because they were computed using the dummy user_position we had to provide
     # Only clusters exceeding a minimum number of members are returned to the
     # user to prevent exposing individual positions.
-    def fx(analysis_result):
+    def transform_data(analysis_result):
         r = []
         for ci in analysis_result.cluster_infos:
             if ci.N<min_cluster_size:
@@ -176,7 +170,16 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
                     })
         return r
 
-    r = fx(res)
+    def get_analyzed_and_transformed_data(t0):
+        # use DB to obtain position data
+        my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=t0)
+        my_a = MyAnalyzer(dl=my_dl)
+        res = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
+        # print(res.cluster_infos)
+        q = transform_data(res)
+        return q
+
+    r = get_analyzed_and_transformed_data(t0=epoch)
 
     ages = [300,600]
     r_h = []
@@ -191,6 +194,15 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
         # becomes relevant is automatic testing of Docker images.
         # -> In these cases, execution of the function must continue.
         try:
+            # TODO: find better variable names, these are confusing: r_historic,res_historic and on the other hand r_h for the final result
+            r_historic = get_analyzed_and_transformed_data(t0=epoch-age)
+        except EInsufficientData:
+            # There is not enough data to cluster.
+            # Try next set of historic data.
+            continue
+
+        """
+        try:
             my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch-age)
             my_a = MyAnalyzer(dl=my_dl)
             res_historic = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
@@ -200,9 +212,13 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
             continue
 
         # TODO: find better variable names, these are confusing: r_historic,res_historic and on the other hand r_h for the final result
-        r_historic = fx(res_historic)
+        r_historic = transform_data(res_historic)
+        """
 
-        # every historic cluster has a set subclusters -> join them to one big set of subclusters (this is ok as the number of clusters might have changed between the points in time and so it is not trivial to relate current and historic clusters)
+        # every historic cluster has a set subclusters
+        # -> join them to one big set of subclusters
+        # (this is ok as the number of clusters might have changed between the points in time
+        # and so it is not trivial to relate current and historic clusters)
         l_sc = []
         for c in r_historic:
             for _ in c['subclusters']:

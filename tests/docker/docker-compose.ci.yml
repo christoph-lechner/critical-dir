@@ -19,7 +19,7 @@ services:
       # -> forces DB to be initialized from sql files every time we run this
       - /var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U testuser"]
+      test: ["CMD-SHELL", "pg_isready -U testuser -d testdb"]
       interval: 5s
       timeout: 5s
       retries: 10

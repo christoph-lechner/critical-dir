@@ -15,14 +15,6 @@ def get_api_baseurl():
         apiurl = os.environ['TEST_APIURL']
     return apiurl
 
-def flush_redis_cache():
-    """
-    2026-06-23: Temporary workaround
-    """
-    from redis import Redis
-    redis = Redis(host='redis', port=6379)
-    redis.flushdb()
-
 def get_clusters(maxdist=1.0):
     apiurl = urljoin(get_api_baseurl(), '/clusters')
     p = {'maxdist':maxdist, 'exclstat':0} # the API server ignores these parameters when it is not run in test mode
@@ -41,24 +33,23 @@ def test_api_clusters():
     the "postgres" Docker container.
     """
 
-    # work-around needed at the moment (redis key does not yet include clustering parameters, so for different clustering parameters the old result would be obtained from the cache)
-    flush_redis_cache()
-
     # for these parameters, the test data returned by DataLoaderTestData
     # contains no matching clusters
     c = get_clusters(maxdist=2.0)
     print(c)
     assert len(c)==0
 
-    # work-around needed at the moment (redis key does not yet include clustering parameters, so for different clustering parameters the old result would be obtained from the cache)
-    flush_redis_cache()
+    def q():
+        # for these parameters, the test data returned by DataLoaderTestData
+        # contains 1 matching clusters of size N=3
+        c = get_clusters(maxdist=2.5)
+        print(c)
+        assert len(c)==1
+        assert c[0]['N']==3
 
-    # for these parameters, the test data returned by DataLoaderTestData
-    # contains 1 matching clusters of size N=3
-    c = get_clusters(maxdist=2.5)
-    print(c)
-    assert len(c)==1
-    assert c[0]['N']==3
+    # running this test twice to check if correct data is retrieved from cache
+    q()
+    q()
 
     print('checks passed -> got expected results')
 

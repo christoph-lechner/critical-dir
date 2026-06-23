@@ -58,10 +58,10 @@ def req_worker(*, q, qstop, worker_id, URL = 'http://localhost:8081/clusters'):
 
 def main():
     q_res = queue.Queue()
-    nthreads = 20
+    nthreads = 10
 
     # To ensure that benchmarking results are not skewed by the cache, we have to start with empty cache or with a time range that was not covered before
-    t_clock_start = datetime.datetime(2026,6,21, 13,40)
+    t_clock_start = datetime.datetime(2026,6,21, 14,20)
 
     ### generate clock thread and start it ###
     q_clock_stop = queue.Queue()

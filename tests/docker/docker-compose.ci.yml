@@ -41,6 +41,7 @@ services:
       # Note: do not quote the DSN.
       - CRITICAL_DIR_PG_DSN=postgres://testuser:testpwd@pgdatabase:5432/testdb
       - CRITICAL_DIR_DATATABLE=criticalmaps_data_test
+      - CRITICAL_DIR_REDIS_HOST=redis
 
       # Remember: These paths to be specified as seen from inside the running Docker container.
       - CRITICAL_DIR_IMG_DIR=/app/objs

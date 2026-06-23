@@ -54,9 +54,10 @@ A reasonable starting point for selecting parameters could be
 ### Technologies used
 - OS: Ubuntu Server 24.04 LTS
 - Docker
-- PostgreSQL v18
 - Python 3.10 or newer
   - notable packages used: FastAPI, scikit-learn, psycopg, pytest
+- PostgreSQL v18
+- Redis
 - Test automatization using GitHub Actions, see [here](#cicd) for more information
 - The [web client](https://github.com/christoph-lechner/critical-dir-map) is implemented using HTML, JavaScript, and [Leaflet](https://leafletjs.com/)
 

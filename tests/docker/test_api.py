@@ -32,18 +32,24 @@ def test_api_clusters():
     in the test environment by the SQL start-up scripts invoked when running
     the "postgres" Docker container.
     """
+
     # for these parameters, the test data returned by DataLoaderTestData
     # contains no matching clusters
     c = get_clusters(maxdist=2.0)
     print(c)
     assert len(c)==0
 
-    # for these parameters, the test data returned by DataLoaderTestData
-    # contains 1 matching clusters of size N=3
-    c = get_clusters(maxdist=2.5)
-    print(c)
-    assert len(c)==1
-    assert c[0]['N']==3
+    def q():
+        # for these parameters, the test data returned by DataLoaderTestData
+        # contains 1 matching clusters of size N=3
+        c = get_clusters(maxdist=2.5)
+        print(c)
+        assert len(c)==1
+        assert c[0]['N']==3
+
+    # running this test twice to check if correct data is retrieved from cache
+    q()
+    q()
 
     print('checks passed -> got expected results')
 

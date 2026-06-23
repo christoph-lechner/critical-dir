@@ -19,6 +19,7 @@ from critical_dir.db_conn import get_db_conn
 from critical_dir.settings import get_settings
 from critical_dir.exceptions import EInsufficientData
 from critical_dir.wip_subclusters import generate_subclusters
+from critical_dir.api_util import generate_cache_key
 
 class SubClustersResponseItem(BaseModel):
     N: int
@@ -80,6 +81,28 @@ app = FastAPI(
 app.state.server_settings = ServerSettings()
 app.state.lock_server_settings = Lock()
 
+
+
+import json
+from redis import Redis
+from redis.exceptions import LockError
+def get_redis_hostname():
+    settings = get_settings()
+    return settings.redis_host
+redis = Redis(host=get_redis_hostname(), port=6379, decode_responses=True)
+
+# for instance, json.dumps does not know what to do with np.int64.
+class MyJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            # print('got an int')
+            return int(obj)
+        if isinstance(obj, np.floating):
+            # print('got an float')
+            return float(obj)
+        return super().default(obj)
+
+
 # v1 of the web client is not deprecated, so /objs is not needed anymore
 # app.mount('/objs', StaticFiles(directory='objs'), name='objs')
 
@@ -136,19 +159,26 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
         if t0>tnow:
             raise ValueError('provided time-stamp is from the future')
         tnow = t0
-    epoch = int(tnow.timestamp())
 
-    # use DB to obtain position data
-    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch)
-    my_a = MyAnalyzer(dl=my_dl)
-    res = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
-    # print(res.cluster_infos)
+    # For any caching scheme to be efficient:
+    # If the underlying raw data is updated only every 30 seconds or so,
+    # it is reasonable to run the analysis only for discrete steps in time.
+    # Only then we will have a reasonable fraction of cache hits.
+    # Using 'ceil' for the timestamp is not reasonable because then it is almost certain that fresh data comes that was of course not considered when preparing the computation result in the cache.
+    # On the other hand, using 'floor', there may still be data coming late, but it is not almost certain. Using a short TTL here (similar to "quantization" used when floor-ing).
+    def timestamp_floor(dt):
+        return dt.replace(
+                second=(dt.second // 15) * 15,
+                microsecond=0,
+        )
+    epoch = int( timestamp_floor(tnow).timestamp() )
+    # epoch = int( tnow.timestamp() )
 
     # To be JSON serializable, the returned object has to be an instance of the defined pydantic class.
     # Some of the fields that come from the analysis process should be shadowed from the client, such as course/distance because they were computed using the dummy user_position we had to provide
     # Only clusters exceeding a minimum number of members are returned to the
     # user to prevent exposing individual positions.
-    def fx(analysis_result):
+    def transform_data(analysis_result):
         r = []
         for ci in analysis_result.cluster_infos:
             if ci.N<min_cluster_size:
@@ -163,8 +193,71 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
                     })
         return r
 
-    r = fx(res)
+    def get_analyzed_and_transformed_data(t0):
+        # use DB to obtain position data
+        my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=t0)
+        my_a = MyAnalyzer(dl=my_dl)
+        res = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
+        # print(res.cluster_infos)
+        q = transform_data(res)
+        return q
 
+    def cached__get_analyzed_and_transformed_data(t0, ttl=30):
+        """
+        For now, synchronous version
+        """
+        # key = f'{t0}'
+        key = generate_cache_key(prefix=f'{t0}', params=ag)
+
+        def cached_data_to_result(d_cache):
+            cached = json.loads(d_cache)
+            if cached.get('got_exception',False):
+                # we know from the cached data that the original function call gave an exception signalling insufficient data in DB ...
+                raise EInsufficientData('')
+            return cached['result']
+
+        d_cache = redis.get(key)
+        if d_cache:
+            print(f'*** cache hit, key={key}')
+            return cached_data_to_result(d_cache)
+
+        # the blocking_timeset is set to several times the expected worst-case time
+        lock = redis.lock(f'lock:{key}', timeout=900, blocking_timeout=200)
+        try:
+            with lock:
+                print('got the lock')
+
+                # see if any other process computed it while we were waiting to enter this section
+                d_cache = redis.get(key)
+                if d_cache:
+                    print(f'*** cache hit, key={key}')
+                    return cached_data_to_result(d_cache)
+
+                try:
+                    print('running the comptation')
+                    result = get_analyzed_and_transformed_data(t0)
+                    d_cache = {'got_exception':False, 'result':result} # , 'ag_str':str(ag)}
+                except EInsufficientData:
+                    print('got exception EInsufficientData -> DB has insufficient data to run analysis for given parameters')
+                    d_cache = {'got_exception':True}
+                    raise
+                finally:
+                    print(f'*** storing data in cache, key={key}')
+                    redis.set(key, json.dumps(d_cache, cls=MyJSONEncoder), ex=ttl)
+
+                qq_d_cache = redis.get(key)
+                return cached_data_to_result(qq_d_cache)
+        except LockError:
+            raise TimeoutError('unable to acquire lock')
+
+    # most recent data is cached with a short time-to-live (client refresh period is 30 seconds, using
+    # a little-bit-longer value so that the actual computation is not always triggered by the same client)
+    r = cached__get_analyzed_and_transformed_data(t0=epoch, ttl=35)
+
+    # We can benefit from the cache if time differences in this list are multiple of 15 seconds
+    # (15 secs is "quantization" of time steps in rounding function)
+    # As long as we are within the time-to-live of the elements in the cache, adding more elements
+    # to this vector does not add huge effort as the analysis results are just fetched from the cache.
     ages = [300,600]
     r_h = []
     for age in ages:
@@ -178,18 +271,19 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
         # becomes relevant is automatic testing of Docker images.
         # -> In these cases, execution of the function must continue.
         try:
-            my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn, t0=epoch-age)
-            my_a = MyAnalyzer(dl=my_dl)
-            res_historic = my_a.perform_analysis(observer_pos=user_pos, ag=ag)
+            # TODO: find better variable names, these are confusing: r_historic,res_historic and on the other hand r_h for the final result
+
+            # using longer cache time-to-live here (not expecting updates of underlying data here)
+            r_historic = cached__get_analyzed_and_transformed_data(t0=epoch-age, ttl=900)
         except EInsufficientData:
             # There is not enough data to cluster.
             # Try next set of historic data.
             continue
 
-        # TODO: find better variable names, these are confusing: r_historic,res_historic and on the other hand r_h for the final result
-        r_historic = fx(res_historic)
-
-        # every historic cluster has a set subclusters -> join them to one big set of subclusters (this is ok as the number of clusters might have changed between the points in time and so it is not trivial to relate current and historic clusters)
+        # every historic cluster has a set subclusters
+        # -> join them to one big set of subclusters
+        # (this is ok as the number of clusters might have changed between the points in time
+        # and so it is not trivial to relate current and historic clusters)
         l_sc = []
         for c in r_historic:
             for _ in c['subclusters']:

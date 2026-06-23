@@ -15,6 +15,7 @@ dependencies = [
     "fastapi",
     "requests",
     "psycopg[binary,pool]",
+    "redis",
     "pydantic-settings",
 ]
 

@@ -23,7 +23,7 @@ def generate_subclusters(*, data, nmin=3, nmax=5, do_plot=False):
 
     data_lat = np.array([_['latitude']  for _ in data])
     data_lon = np.array([_['longitude'] for _ in data])
-    print(f'number of datapoints {len(data_lat)}')
+    # print(f'number of datapoints {len(data_lat)}')
     if do_plot:
         fig,hax=plt.subplots(1)
         hax.plot(data_lon,data_lat,'.')
@@ -37,18 +37,35 @@ def generate_subclusters(*, data, nmin=3, nmax=5, do_plot=False):
     crs_wgs84 = CRS.from_epsg(4326)
     sample_lat = data_lat[0]
     sample_lon = data_lon[0]
-    # TODO/FIXME: The call to query_utm_crs_info costs about 100ms on my PC, dominating the total time spent in this function.
-    # ?replace with direct zone arithmetic?
-    utm_crs_list = query_utm_crs_info(
-            datum_name='WGS 84',
-            area_of_interest = AreaOfInterest(
-                west_lon_degree  = sample_lon,
-                south_lat_degree = sample_lat,
-                east_lon_degree  = sample_lon,
-                north_lat_degree = sample_lat,
-            ),
-    )
-    utm_crs = CRS.from_epsg(utm_crs_list[0].code)
+    # Optimization: calling query_utm_crs_info costs about 100ms on my PC, dominating the total time spent in this function.
+    # For most cases, it can be replaced by direct zone arithmetic
+    if sample_lat>=56 and sample_lon>=0 and sample_lon<=42:
+        # Handle exceptions from simple, direct zone arithmetic:
+        # https://en.wikipedia.org/w/index.php?title=Universal_Transverse_Mercator_coordinate_system&oldid=1340278771#Exceptions , accessed 2026-06-22
+        utm_crs_list = query_utm_crs_info(
+                datum_name='WGS 84',
+                area_of_interest = AreaOfInterest(
+                    west_lon_degree  = sample_lon,
+                    south_lat_degree = sample_lat,
+                    east_lon_degree  = sample_lon,
+                    north_lat_degree = sample_lat,
+                ),
+        )
+        utm_crs = CRS.from_epsg(utm_crs_list[0].code)
+    else:
+        # Direct zone arithmetic
+        def get_utm_epsg_from_latlng(lat,lng):
+            zone = int(np.floor((lng+180)/6) + 1)
+
+            # special longitude=180 edge case
+            zone = min( max(zone, 1), 60 )
+
+            if lat>0:
+                return 32600+zone
+            else:
+                return 32700+zone
+        
+        utm_crs = CRS.from_epsg(get_utm_epsg_from_latlng(sample_lat,sample_lon))
 
     # Transform the data to x/y
     transformer = Transformer.from_crs(crs_wgs84, utm_crs, always_xy=True)
@@ -107,7 +124,7 @@ def generate_subclusters(*, data, nmin=3, nmax=5, do_plot=False):
 
     tend = datetime.datetime.now()
     deltat = (tend-tstart).total_seconds()
-    print(f'*** time needed for clustering {deltat:.3f}s ***')
+    # print(f'*** time needed for clustering {deltat:.3f}s ***')
 
 
     ##################################

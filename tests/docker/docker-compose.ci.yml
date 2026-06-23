@@ -8,8 +8,9 @@ services:
       - POSTGRES_USER=testuser
       - POSTGRES_PASSWORD=testpwd
       - POSTGRES_DB=testdb
-    ports:
-      - "5432:5432"
+    # not exposing ports on host system
+    # ports:
+    #   - "5432:5432"
     volumes:
       # materials for pre-seeding the DB
       - "./testdata_pg:/docker-entrypoint-initdb.d/"
@@ -18,10 +19,19 @@ services:
       # -> forces DB to be initialized from sql files every time we run this
       - /var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U testuser"]
+      test: ["CMD-SHELL", "pg_isready -U testuser -d testdb"]
       interval: 5s
       timeout: 5s
       retries: 10
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    # not exposing ports on host system
+    # ports:
+    # - '6379:6379'
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
 
   cdir_api_server:
     build:
@@ -31,16 +41,20 @@ services:
       # Note: do not quote the DSN.
       - CRITICAL_DIR_PG_DSN=postgres://testuser:testpwd@pgdatabase:5432/testdb
       - CRITICAL_DIR_DATATABLE=criticalmaps_data_test
+      - CRITICAL_DIR_REDIS_HOST=redis
 
       # Remember: These paths to be specified as seen from inside the running Docker container.
       - CRITICAL_DIR_IMG_DIR=/app/objs
       - CRITICAL_DIR_API_DOWNLOADER_JSON_OUTDIR=/app/not_used_for_test/
       # currently unlocks manipulation of some parameters via URL
       - CRITICAL_DIR_TEST_MODE=1
+    # exposing port on host system -> needed for test development
     ports:
       - "8081:8081"
     depends_on:
       pgdatabase:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   # for tests: base parameters are identical to API server config
@@ -62,4 +76,6 @@ services:
       pgdatabase:
         condition: service_healthy
       cdir_api_server:
+        condition: service_healthy
+      redis:
         condition: service_healthy

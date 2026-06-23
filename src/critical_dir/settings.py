@@ -6,6 +6,7 @@ from functools import cache
 class Settings(BaseSettings):
     pg_dsn: PostgresDsn
     datatable: str = 'criticalmaps_data'
+    redis_host: str = 'localhost'
 
     img_dir: Path
     api_downloader_json_outdir: Path

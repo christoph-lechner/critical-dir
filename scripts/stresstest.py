@@ -9,7 +9,7 @@ import pandas as pd
 
 def clock_worker(*, qstop, tstart, URL = 'http://localhost:8081/set_t0'):
     """
-    qstop: Put something into this queue (not important what), for the main loop to stop
+    qstop: Put something into this queue (not important what), for this thread to stop
     """
     t_loop_start = datetime.datetime.now()
     while qstop.empty():
@@ -27,7 +27,10 @@ def clock_worker(*, qstop, tstart, URL = 'http://localhost:8081/set_t0'):
     print('*** clock thread: exit ***')
 
 
-def req_worker(q, worker_id, URL = 'http://localhost:8081/clusters'):
+def req_worker(*, q, qstop, worker_id, URL = 'http://localhost:8081/clusters'):
+    """
+    qstop: Put something into this queue (not important what), for this thread to stop
+    """
     def wait_until(dt):
         deltat = tnext - datetime.datetime.now()
         deltat = deltat.total_seconds()
@@ -38,7 +41,7 @@ def req_worker(q, worker_id, URL = 'http://localhost:8081/clusters'):
         return
 
     tnext = datetime.datetime.now()
-    for jj in range(0,200):
+    while qstop.empty():
         wait_until(tnext)
         # print('sending req')
 
@@ -49,16 +52,15 @@ def req_worker(q, worker_id, URL = 'http://localhost:8081/clusters'):
         tend = datetime.datetime.now()
         deltat = (tend-tstart).total_seconds()
         q.put({'worker_id': worker_id, 'deltat':deltat})
-
         tnext += datetime.timedelta(seconds=5)
 
-def main():
-    q = queue.Queue()
+    print(f'*** load thread {worker_id}: exit ***')
 
+def main():
+    q_res = queue.Queue()
     nthreads = 20
 
     # To ensure that benchmarking results are not skewed by the cache, we have to start with empty cache or with a time range that was not covered before
-    t_clock_start = datetime.datetime(2026,6,21, 13,25)
     t_clock_start = datetime.datetime(2026,6,21, 13,40)
 
     ### generate clock thread and start it ###
@@ -70,13 +72,22 @@ def main():
 
 
     ### generate requestor threads and then start them ###
+    q_stop = queue.Queue()
     threads = []
     for worker_id in range(0,nthreads):
+        args = {'q':q_res, 'qstop':q_stop, 'worker_id':worker_id}
         threads.append(
-            threading.Thread(target=req_worker, args=(q,worker_id,))
+            threading.Thread(target=req_worker, kwargs=args)
         )
     for currt in threads:
         currt.start()
+
+    ### wait while the threads acquire data ###
+    time.sleep(30*60)
+
+    ### send stop signal ###
+    for _ in range(nthreads):
+        q_stop.put({})
 
     ### wait for threads to finish ###
     for currt in threads:
@@ -89,13 +100,17 @@ def main():
     lres = []
     try:
         while True:
-            lres.append(q.get_nowait())
+            lres.append(q_res.get_nowait())
     except queue.Empty:
         pass # we expect getting this Exception once queue is empty
 
     df = pd.DataFrame(lres)
     stats = df.groupby('worker_id')['deltat'].agg(
-                count='count',median='median',mean='mean',std='std',minimum='min',maximum='max'
+                count='count',
+                median='median',
+                p90=lambda x: x.quantile(0.90),
+                p95=lambda x: x.quantile(0.95),
+                mean='mean', std='std', minimum='min', maximum='max',
             )
     print(stats)
 

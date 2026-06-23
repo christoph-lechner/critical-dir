@@ -19,6 +19,7 @@ from critical_dir.db_conn import get_db_conn
 from critical_dir.settings import get_settings
 from critical_dir.exceptions import EInsufficientData
 from critical_dir.wip_subclusters import generate_subclusters
+from critical_dir.api_util import generate_cache_key
 
 class SubClustersResponseItem(BaseModel):
     N: int
@@ -203,7 +204,8 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
         """
         For now, synchronous version
         """
-        key = f'{t0}'
+        # key = f'{t0}'
+        key = generate_cache_key(prefix=f'{t0}', params=ag)
 
         def cached_data_to_result(d_cache):
             cached = json.loads(d_cache)

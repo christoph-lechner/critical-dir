@@ -27,7 +27,7 @@ def clock_worker(*, qstop, tstart, URL = 'http://localhost:8081/set_t0'):
     print('*** clock thread: exit ***')
 
 
-def req_worker(*, q, qstop, worker_id, URL = 'http://localhost:8081/clusters'):
+def req_worker(*, q, qstop, worker_id, trep=5, URL = 'http://localhost:8081/clusters'):
     """
     qstop: Put something into this queue (not important what), for this thread to stop
     """
@@ -52,7 +52,7 @@ def req_worker(*, q, qstop, worker_id, URL = 'http://localhost:8081/clusters'):
         tend = datetime.datetime.now()
         deltat = (tend-tstart).total_seconds()
         q.put({'worker_id': worker_id, 'deltat':deltat})
-        tnext += datetime.timedelta(seconds=5)
+        tnext += datetime.timedelta(seconds=trep)
 
     print(f'*** load thread {worker_id}: exit ***')
 
@@ -75,7 +75,10 @@ def main():
     q_stop = queue.Queue()
     threads = []
     for worker_id in range(0,nthreads):
-        args = {'q':q_res, 'qstop':q_stop, 'worker_id':worker_id}
+        # slightly different repetition times, so after a short time all threads request at completely different times
+        my_trep = 5+0.05*worker_id
+        print(f'{my_trep}')
+        args = {'q':q_res, 'qstop':q_stop, 'worker_id':worker_id, 'trep':my_trep}
         threads.append(
             threading.Thread(target=req_worker, kwargs=args)
         )

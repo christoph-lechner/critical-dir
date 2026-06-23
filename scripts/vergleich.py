@@ -25,8 +25,8 @@ def get_clusters(*, baseurl:str):
     r.raise_for_status()
     return r.json()
 
-base1 = 'http://localhost:8081/'
-base2 = 'https://other_url/api/'
+base1 = 'http://clpc:8081/'
+base2 = 'http://192.168.2.253:8777/'
 
 # t0 = datetime.datetime(2026,6,21, 7,00)
 # t0 = datetime.datetime(2026,6,21, 9,25)

@@ -15,6 +15,14 @@ def get_api_baseurl():
         apiurl = os.environ['TEST_APIURL']
     return apiurl
 
+def flush_redis_cache():
+    """
+    2026-06-23: Temporary workaround
+    """
+    from redis import Redis
+    redis = Redis(host='redis', port=6379)
+    redis.flushdb()
+
 def get_clusters(maxdist=1.0):
     apiurl = urljoin(get_api_baseurl(), '/clusters')
     p = {'maxdist':maxdist, 'exclstat':0} # the API server ignores these parameters when it is not run in test mode
@@ -32,11 +40,18 @@ def test_api_clusters():
     in the test environment by the SQL start-up scripts invoked when running
     the "postgres" Docker container.
     """
+
+    # work-around needed at the moment (redis key does not yet include clustering parameters, so for different clustering parameters the old result would be obtained from the cache)
+    flush_redis_cache()
+
     # for these parameters, the test data returned by DataLoaderTestData
     # contains no matching clusters
     c = get_clusters(maxdist=2.0)
     print(c)
     assert len(c)==0
+
+    # work-around needed at the moment (redis key does not yet include clustering parameters, so for different clustering parameters the old result would be obtained from the cache)
+    flush_redis_cache()
 
     # for these parameters, the test data returned by DataLoaderTestData
     # contains 1 matching clusters of size N=3

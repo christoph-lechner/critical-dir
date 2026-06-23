@@ -85,7 +85,7 @@ app.state.lock_server_settings = Lock()
 import json
 from redis import Redis
 from redis.exceptions import LockError
-redis = Redis(host='localhost', port=6379, decode_responses=True)
+redis = Redis(host='redis', port=6379, decode_responses=True)
 
 # for instance, json.dumps does not know what to do with np.int64.
 class MyJSONEncoder(json.JSONEncoder):

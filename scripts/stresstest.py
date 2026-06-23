@@ -7,6 +7,26 @@ import datetime
 import time
 import pandas as pd
 
+def clock_worker(*, qstop, tstart, URL = 'http://localhost:8081/set_t0'):
+    """
+    qstop: Put something into this queue (not important what), for the main loop to stop
+    """
+    t_loop_start = datetime.datetime.now()
+    while qstop.empty():
+        tnow = datetime.datetime.now()
+        time_elapsed = tnow - t_loop_start
+        t0 = tstart + time_elapsed
+        print(f'tnow={tnow} (deltat={time_elapsed.total_seconds()}): setting API server time to: {t0}')
+
+        # datetime.datetime is not JSON realizable, so let's do it ourselves and format using strftime
+        str_t0 = t0.strftime('%Y-%m-%dT%H:%M:%S')
+        payload = {'t0':str_t0}
+        r = requests.post(URL, json=payload)
+        r.raise_for_status()
+        time.sleep(5)
+    print('*** clock thread: exit ***')
+
+
 def req_worker(q, worker_id, URL = 'http://localhost:8081/clusters'):
     def wait_until(dt):
         deltat = tnext - datetime.datetime.now()
@@ -18,7 +38,7 @@ def req_worker(q, worker_id, URL = 'http://localhost:8081/clusters'):
         return
 
     tnext = datetime.datetime.now()
-    for jj in range(0,20):
+    for jj in range(0,200):
         wait_until(tnext)
         # print('sending req')
 
@@ -35,9 +55,21 @@ def req_worker(q, worker_id, URL = 'http://localhost:8081/clusters'):
 def main():
     q = queue.Queue()
 
-    nthreads = 10
+    nthreads = 20
 
-    ### generate threads and then start them ###
+    # To ensure that benchmarking results are not skewed by the cache, we have to start with empty cache or with a time range that was not covered before
+    t_clock_start = datetime.datetime(2026,6,21, 13,25)
+    t_clock_start = datetime.datetime(2026,6,21, 13,40)
+
+    ### generate clock thread and start it ###
+    q_clock_stop = queue.Queue()
+    args_clock = {'qstop':q_clock_stop, 'tstart':t_clock_start}
+    clock_thread = threading.Thread(target=clock_worker, kwargs=args_clock)
+    clock_thread.start()
+    time.sleep(1) # to be sure that the time is right when the requests are sent
+
+
+    ### generate requestor threads and then start them ###
     threads = []
     for worker_id in range(0,nthreads):
         threads.append(
@@ -49,6 +81,9 @@ def main():
     ### wait for threads to finish ###
     for currt in threads:
         currt.join()
+    # after all workers are done, stop time-adjustment thread
+    q_clock_stop.put({})
+    clock_thread.join()
 
     # drain queue with results
     lres = []

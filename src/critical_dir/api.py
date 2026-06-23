@@ -85,7 +85,8 @@ app.state.lock_server_settings = Lock()
 import json
 from redis import Redis
 from redis.exceptions import LockError
-redis = Redis(host='redis', port=6379, decode_responses=True)
+redis = Redis(host='localhost', port=6379, decode_responses=True)
+redis.flushall()
 
 # for instance, json.dumps does not know what to do with np.int64.
 class MyJSONEncoder(json.JSONEncoder):
@@ -96,7 +97,7 @@ class MyJSONEncoder(json.JSONEncoder):
         if isinstance(obj, np.floating):
             # print('got an float')
             return float(obj)
-        return suprt().default(obj)
+        return super().default(obj)
 
 
 # v1 of the web client is not deprecated, so /objs is not needed anymore
@@ -204,13 +205,17 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
         """
         key = f'{t0}'
 
-        cached = redis.get(key)
-        if cached:
-            print(f'*** cache hit, key={key}')
-            cached = json.loads(cached)
-            if 'got_exception' in cached:
+        def cached_data_to_result(d_cache):
+            cached = json.loads(d_cache)
+            if cached.get('got_exception',False):
+                # we know from the cached data that the original function call gave an exception signalling insufficient data in DB ...
                 raise EInsufficientData('')
-            return cached
+            return cached['result']
+
+        d_cache = redis.get(key)
+        if d_cache:
+            print(f'*** cache hit, key={key}')
+            return cached_data_to_result(d_cache)
 
         # the blocking_timeset is set to several times the expected worst-case time
         lock = redis.lock(f'lock:{key}', timeout=900, blocking_timeout=200)
@@ -219,24 +224,25 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
                 print('got the lock')
 
                 # see if any other process computed it while we were waiting to enter this section
-                cached = redis.get(key)
-                if cached:
-                    return json.loads(cached)
+                d_cache = redis.get(key)
+                if d_cache:
+                    print(f'*** cache hit, key={key}')
+                    return cached_data_to_result(d_cache)
 
                 try:
                     print('running the comptation')
                     result = get_analyzed_and_transformed_data(t0)
+                    d_cache = {'got_exception':False, 'result':result} # , 'ag_str':str(ag)}
                 except EInsufficientData:
-                    print('got exception')
-                    result = {'got_exception':True}
+                    print('got exception EInsufficientData -> DB has insufficient data to run analysis for given parameters')
+                    d_cache = {'got_exception':True}
                     raise
                 finally:
                     print(f'*** storing data in cache, key={key}')
-                    redis.set(key, json.dumps(result, cls=MyJSONEncoder), ex=ttl)
+                    redis.set(key, json.dumps(d_cache, cls=MyJSONEncoder), ex=ttl)
 
-                cached = redis.get(key)
-                return json.loads(cached)
-
+                qq_d_cache = redis.get(key)
+                return cached_data_to_result(qq_d_cache)
         except LockError:
             raise TimeoutError('unable to acquire lock')
 

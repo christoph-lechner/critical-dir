@@ -240,9 +240,14 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
         except LockError:
             raise TimeoutError('unable to acquire lock')
 
-    # most recent data is cached with a short time-to-live (client refresh period is 30 seconds, using a little-bit-longer value so that the actual computation is not always triggered by the same client)
+    # most recent data is cached with a short time-to-live (client refresh period is 30 seconds, using
+    # a little-bit-longer value so that the actual computation is not always triggered by the same client)
     r = cached__get_analyzed_and_transformed_data(t0=epoch, ttl=35)
 
+    # We can benefit from the cache if time differences in this list are multiple of 15 seconds
+    # (15 secs is "quantization" of time steps in rounding function)
+    # As long as we are within the time-to-live of the elements in the cache, adding more elements
+    # to this vector does not add huge effort as the analysis results are just fetched from the cache.
     ages = [300,600]
     r_h = []
     for age in ages:

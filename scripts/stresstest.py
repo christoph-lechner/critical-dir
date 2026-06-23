@@ -18,7 +18,7 @@ def req_worker(q, worker_id, URL = 'http://localhost:8081/clusters'):
         return
 
     tnext = datetime.datetime.now()
-    for jj in range(0,5):
+    for jj in range(0,20):
         wait_until(tnext)
         # print('sending req')
 
@@ -30,12 +30,12 @@ def req_worker(q, worker_id, URL = 'http://localhost:8081/clusters'):
         deltat = (tend-tstart).total_seconds()
         q.put({'worker_id': worker_id, 'deltat':deltat})
 
-        tnext += datetime.timedelta(seconds=10)
+        tnext += datetime.timedelta(seconds=5)
 
 def main():
     q = queue.Queue()
 
-    nthreads = 3
+    nthreads = 10
 
     ### generate threads and then start them ###
     threads = []
@@ -60,7 +60,7 @@ def main():
 
     df = pd.DataFrame(lres)
     stats = df.groupby('worker_id')['deltat'].agg(
-                count='count',mean='mean',std='std',minimum='min',maximum='max'
+                count='count',median='median',mean='mean',std='std',minimum='min',maximum='max'
             )
     print(stats)
 

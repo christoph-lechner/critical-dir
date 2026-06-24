@@ -19,7 +19,7 @@ from critical_dir.db_conn import get_db_conn
 from critical_dir.settings import get_settings
 from critical_dir.exceptions import EInsufficientData
 from critical_dir.wip_subclusters import generate_subclusters
-from critical_dir.api_util import generate_cache_key
+from critical_dir.api_util import generate_cache_key, determine_cache_ttl
 
 class SubClustersResponseItem(BaseModel):
     N: int
@@ -223,8 +223,12 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
             print(f'*** cache hit, key={key}')
             return cached_data_to_result(d_cache)
 
-        # the blocking_timeset is set to several times the expected worst-case time
-        lock = redis.lock(f'lock:{key}', timeout=900, blocking_timeout=200)
+        lock = redis.lock(
+                    f'lock:{key}',
+                    timeout=900,
+                    # the blocking_timeset is set to several times the expected worst-case time
+                    blocking_timeout=200,
+                )
         try:
             with lock:
                 print('got the lock')
@@ -242,9 +246,13 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
                 except EInsufficientData:
                     print('got exception EInsufficientData -> DB has insufficient data to run analysis for given parameters')
                     d_cache = {'got_exception':True}
-                    raise
+                    raise # FIXME/TODO: correct to re-raise?
                 finally:
                     print(f'*** storing data in cache, key={key}')
+                    # add timestamp (in UNIX epoch) to data, for later implementation of advanced caching schemes
+                    # (for instance, one could serve data already somewhat 'stale' but still within the hard cache expiration time and trigger preparation of fresh data in the background)
+                    tsnow = datetime.datetime.now().timestamp()
+                    d_cache['timestamp'] = tsnow
                     redis.set(key, json.dumps(d_cache, cls=MyJSONEncoder), ex=ttl)
 
                 qq_d_cache = redis.get(key)
@@ -252,9 +260,8 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
         except LockError:
             raise TimeoutError('unable to acquire lock')
 
-    # most recent data is cached with a short time-to-live (client refresh period is 30 seconds, using
-    # a little-bit-longer value so that the actual computation is not always triggered by the same client)
-    r = cached__get_analyzed_and_transformed_data(t0=epoch, ttl=35)
+    # most recent data is cached shorter time-to-live
+    r = cached__get_analyzed_and_transformed_data(t0=epoch, ttl=determine_cache_ttl(data_age=0))
 
     # We can benefit from the cache if time differences in this list are multiple of 15 seconds
     # (15 secs is "quantization" of time steps in rounding function)
@@ -275,8 +282,7 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
         try:
             # TODO: find better variable names, these are confusing: r_historic,res_historic and on the other hand r_h for the final result
 
-            # using longer cache time-to-live here (not expecting updates of underlying data here)
-            r_historic = cached__get_analyzed_and_transformed_data(t0=epoch-age, ttl=900)
+            r_historic = cached__get_analyzed_and_transformed_data(t0=epoch-age, ttl=determine_cache_ttl(data_age=age))
         except EInsufficientData:
             # There is not enough data to cluster.
             # Try next set of historic data.
@@ -540,6 +546,27 @@ async def inspect(clat: float, clong: float):
     html = f"<html><body><a href=/myapp/>For iPhone PWA: Back</a><p>Inspecting local distribution of riders around {clat:.4f},{clong:.4f}. Note that this plot does not indicate cluster infos, so all positions are indicated with same marker color.<img src=\"objs/{fn_img}\"></body></html>"
     return HTMLResponse(content=html)
 
+
+
+def check_redis():
+    """
+    Test that redis server works, using most important operations: get/set
+    """
+    tsnow = int(datetime.datetime.now().timestamp())
+    key = f'healthcheck:{tsnow}'
+
+    # we write a time-dependent value
+    value = f'__{tsnow}__'
+
+    try:
+        redis.set(key, value, ex=60)
+        result = redis.get(key)
+        redis.delete(key)
+        return result==value
+    except RedisError:
+        # here we catch the base class of all redis-related exceptions
+        return False
+
 def check_db_freshness(*, max_age = 900):
     """
     Optional arguments: maximum age in seconds.
@@ -565,13 +592,14 @@ def health_check_core_worker(*, report_stale_db=True):
     """
     is_fresh = check_db_freshness()
     # print(f'DB freshness --> {is_fresh}')
+    redis_ok = check_redis()
 
     # TODO: Currently NOT running a test of the cluster algorithm as it can
     # take a few seconds. One trade-off could be to cache the result of cluster
     # algorithm for (for instance) 15 minutes.
    
     # determine the result, taking everything into consideration
-    is_ok = True
+    is_ok = redis_ok # in the future: take into  more flags using boolean and operation
     if report_stale_db:
         if is_fresh==False:
             is_ok=False

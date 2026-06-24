@@ -10,10 +10,24 @@ services:
     # - CRITICAL_DIR_IMG_DIR
     # - CRITICAL_DIR_API_DOWNLOADER_JSON_OUTDIR
     env_file: .env
+    environment:
+      # parameter not in .env file as the Redis server is part of this file
+      - CRITICAL_DIR_REDIS_HOST=redis      
     # UID/GID of user 'cdirdata' (this user has write permissions to data directory)
     # user: "1006:1006"
-    volumes:
-      # - "/srv/criticaldir_data:/app/cmdata"
-      - "/tmp/objs:/app/objs"
     ports:
       - 8777:8081
+    depends_on:
+      redis:
+        condition: service_healthy
+
+
+  redis:
+    image: redis:latest
+    container_name: redis
+    restart: on-failure
+    # not exposing ports on host system
+    # ports:
+    # - '6379:6379'
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]

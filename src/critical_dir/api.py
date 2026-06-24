@@ -537,6 +537,27 @@ async def inspect(clat: float, clong: float):
     html = f"<html><body><a href=/myapp/>For iPhone PWA: Back</a><p>Inspecting local distribution of riders around {clat:.4f},{clong:.4f}. Note that this plot does not indicate cluster infos, so all positions are indicated with same marker color.<img src=\"objs/{fn_img}\"></body></html>"
     return HTMLResponse(content=html)
 
+
+
+def check_redis():
+    """
+    Test that redis server works, using most important operations: get/set
+    """
+    tsnow = int(datetime.datetime.now().timestamp())
+    key = f'healthcheck:{tsnow}'
+
+    # we write a time-dependent value
+    value = f'__{tsnow}__'
+
+    try:
+        redis.set(key, value, ex=60)
+        result = redis.get(key)
+        redis.delete(key)
+        return result==value
+    except RedisError:
+        # here we catch the base class of all redis-related exceptions
+        return False
+
 def check_db_freshness(*, max_age = 900):
     """
     Optional arguments: maximum age in seconds.
@@ -562,13 +583,14 @@ def health_check_core_worker(*, report_stale_db=True):
     """
     is_fresh = check_db_freshness()
     # print(f'DB freshness --> {is_fresh}')
+    redis_ok = check_redis()
 
     # TODO: Currently NOT running a test of the cluster algorithm as it can
     # take a few seconds. One trade-off could be to cache the result of cluster
     # algorithm for (for instance) 15 minutes.
    
     # determine the result, taking everything into consideration
-    is_ok = True
+    is_ok = redis_ok # in the future: take into  more flags using boolean and operation
     if report_stale_db:
         if is_fresh==False:
             is_ok=False

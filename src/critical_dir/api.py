@@ -52,7 +52,8 @@ class ClustersResponse(BaseModel):
 
 class SetT0Request(BaseModel):
     t0: datetime.datetime
-    reset: bool=False
+    reset: bool = False
+    t0_do_not_report: bool = False
 
 class LocationRequest(BaseModel):
     latitude: float
@@ -72,6 +73,7 @@ class LocationResponse(BaseModel):
 @dataclass
 class ServerSettings:
     t0: datetime.datetime = None
+    t0_do_not_report: bool = False
 
 app = FastAPI(
     docs_url=None,          # disables /docs
@@ -425,8 +427,10 @@ def get_clusters(
     # run clustering algorithm (and catch exception raised if there is insufficient amount of data)
     try:
         t0 = None
+        t0_do_not_report = False
         with app.state.lock_server_settings:
             t0 = app.state.server_settings.t0
+            t0_do_not_report = app.state.server_settings.t0_do_not_report
         clusters,l_historic_subclusters = clusters_worker(ag=ag, min_cluster_size=3, t0=t0)
     except EInsufficientData:
         clusters = []
@@ -434,8 +438,10 @@ def get_clusters(
 
     # only parameters influencing the result (we enforce min cluster size -> irrelevant if isolated points are excluded by clustering algorithm or no; not using any trace persistence here)
     l_info_txt = [f'd={ag.cluster_dist_thres}', f'x={ag.exclude_stationary_devices}']
-    if t0:
+    # report t0 only if user did not request to hide it
+    if t0 and t0_do_not_report==False:
         l_info_txt.append(f't0="{t0}"')
+
     r = {
         'info': ', '.join(l_info_txt),
         'clusters': clusters,
@@ -455,16 +461,19 @@ def set_t0(payload: SetT0Request):
     """
     if payload.reset:
         t0 = None
+        t0_do_not_report = False
     else:
         try:
             t0 = payload.t0
             # t0 = datetime.fromisoformat(payload.t0)
             t0 = t0.replace(tzinfo=ZoneInfo("Europe/Berlin"))
+            t0_do_not_report = payload.t0_do_not_report
         except ValueError:
             raise HTTPException(status_code=400, detail='unable to process timestamp')
     # update the settings variable
     with app.state.lock_server_settings:
-        app.state.server_settings.t0 = t0
+        app.state.server_settings.t0               = t0
+        app.state.server_settings.t0_do_not_report = t0_do_not_report
 
 @app.post('/location_demo', response_model=LocationResponse)
 @app.get('/location_demo', response_model=LocationResponse)

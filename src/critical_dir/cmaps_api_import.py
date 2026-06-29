@@ -9,6 +9,7 @@ from threading import Event
 from pathlib import Path
 import traceback
 from collections.abc import Callable
+from dataclasses import dataclass
 from critical_dir.cmaps_api import get_cmaps_data
 
 import psycopg
@@ -17,6 +18,27 @@ from critical_dir.db_conn import get_db_conn
 from critical_dir.cmaps_util import load_cmap_jsonfile
 
 from critical_dir.settings import get_settings
+
+@dataclass
+class ProcStats:
+    # no default for first two fields: we always know start time and total duration
+    tstart: datetime.datetime
+    total_time: float
+    #
+    total_status: bool = False
+    #
+    # The defaults of all other fields map to NULL in SQL DB
+    #
+    exc_inphase: str = None
+    exc_name: str = None
+    exc_info: str = None
+    #
+    api_http_response_code: int = None
+    #
+    fileok: bool = None
+    filename: str = None
+    nrows_loaded: int = None
+    nrows_merged: int = None
 
 """
 Configuration of data output directory via environment variable
@@ -118,6 +140,12 @@ def data_merge(cur, *, data_table, stg_table):
     )
     return cur.rowcount
 
+def store_status_info(cur, ps: ProcStats, info_table='criticalmaps_stats_dev'):
+    cur.execute(
+        'INSERT INTO ' +info_table+ ' (ts,total_time,total_status,   exc_inphase,exc_name,exc_info,   api_http_response_code,   fileok,filename,nrows_loaded,nrows_merged) VALUES (%s,%s,%s,   %s,%s,%s,   %s,   %s,%s,%s,%s)',
+        (ps.tstart,ps.total_time,ps.total_status,   ps.exc_inphase,ps.exc_name,ps.exc_info,   ps.api_http_response_code,   ps.fileok,ps.filename,ps.nrows_loaded,ps.nrows_merged)
+    )
+
 #####
 
 # signal handler
@@ -190,8 +218,9 @@ def t_download_worker(*,stop_event, f_heartbeat: Callable=None):
             print('got SIGTERM/SIGINT -> stopping')
             break
 
+        tprocstart = datetime.datetime.now()
         try:
-            # TODO: add time outs here
+            # TODO: add timeouts here
             fn_out = get_fn()
             print(f'Downloading data to file {fn_out} ...')
             data = get_cmaps_data()
@@ -208,22 +237,39 @@ def t_download_worker(*,stop_event, f_heartbeat: Callable=None):
             # consider to re-raise file I/O issues to stop the program (but then a watchdog has to start another instance so that data acquisition goes on)
             print('*** Data download resulted in exception ***')
             put_info_file(traceback.format_exc(), dupl_to_stdout=True)
+            procstats = ProcStats(
+                    tstart=tprocstart,
+                    total_time = (datetime.datetime.now() - tprocstart).total_seconds(),
+                    total_status = False,
+                    exc_inphase='API access',
+                    exc_name = type(e).__qualname__,
+                    exc_info = traceback.format_exc(),
+                    # 2026-06-29: at the moment not assigning HTTP response code
+                    filename = str(fn_out),
+            )
+            # print(procstats)
+
+            # Note: There must not have been any SQL write access -- except storing these infos
+            store_status_info(cur, ps=procstats)
+            conn.commit()
             continue
 
         # DB operations are in second try/catch block to make the program more robust (for instance if a single operation fails for whatever reason)
         # TODO: add provisions for DB connection going down.
         try:
             # create unique names for data staging steps
-            t0 = datetime.datetime.now()
-            str_t0 = t0.strftime('%Y%m%dT%H%M%S')
+            str_t0 = tprocstart.strftime('%Y%m%dT%H%M%S')
             stg_table = 'stg_'+str_t0
             stg_table_hashed = stg_table + '_h'
             stg_table_dedupl = stg_table + '_d'
 
-            # prepare staging table
             data,_ = load_cmap_jsonfile(fn_out)
+
+            # prepare and populate staging table
+            nrows_loaded=0
             prepare_stg_table(cur, stg_table)
             for d in data:
+                nrows_loaded+=1
                 cur.execute(
                     'INSERT INTO ' +stg_table+ ' (deviceid,latitude,longitude,timestamp) VALUES (%s,%s,%s,%s)',
                     (d['device'], d['latitude'], d['longitude'], d['timestamp'])
@@ -231,12 +277,41 @@ def t_download_worker(*,stop_event, f_heartbeat: Callable=None):
 
             data_add_hashes(cur, stg_table_hashed, stg_table)
             data_dedupl(cur, stg_table_dedupl, stg_table_hashed)
-            data_merge(cur, data_table=settings.datatable, stg_table=stg_table_dedupl)
+            nrows_merged = data_merge(cur, data_table=settings.datatable, stg_table=stg_table_dedupl)
+
+            procstats = ProcStats(
+                    tstart=tprocstart,
+                    total_time = (datetime.datetime.now() - tprocstart).total_seconds(),
+                    total_status = True,
+                    # 2026-06-29: at the moment not assigning HTTP response code
+                    filename = str(fn_out),
+                    fileok = True,
+                    nrows_loaded = nrows_loaded,
+                    nrows_merged = nrows_merged,
+            )
+            store_status_info(cur, ps=procstats)
 
             conn.commit()
         except Exception as e:
             print('*** DB operations resulted in exception ***')
             put_info_file(traceback.format_exc(), dupl_to_stdout=True)
+            procstats = ProcStats(
+                    tstart=tprocstart,
+                    total_time = (datetime.datetime.now() - tprocstart).total_seconds(),
+                    total_status = False,
+                    exc_inphase='DB access',
+                    exc_name = type(e).__qualname__,
+                    exc_info = traceback.format_exc(),
+                    # 2026-06-29: at the moment not assigning HTTP response code
+                    filename = str(fn_out),
+            )
+            # print(procstats)
+
+            # Here, we don't know which part of the DB operations failed
+            # -> rollback to be one the safe side
+            conn.rollback()
+            store_status_info(cur, ps=procstats)
+            conn.commit()
             continue
 
 

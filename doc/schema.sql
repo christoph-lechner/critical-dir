@@ -15,3 +15,22 @@ CREATE INDEX ON criticalmaps_data(deviceid,timestamp);
 CREATE INDEX ON criticalmaps_data(latitude,longitude);
 -- index for queries such as "SELECT MAX(timestamp) AS timestamp_mostrecent FROM criticalmaps_data"
 CREATE INDEX ON criticalmaps_data(timestamp);
+
+-- NOTE: if you change the definition of this table, be sure to update the data ingestion script
+CREATE TABLE criticalmaps_stats_dev(
+	ts TIMESTAMP WITH TIME ZONE,
+	total_time FLOAT,
+	total_status BOOLEAN,
+
+	-- these are NULL in case of no exception
+	exc_inphase TEXT,
+	exc_name TEXT, 
+	exc_info TEXT,
+
+	api_http_response_code INT,
+
+	fileok BOOLEAN,
+	filename TEXT,
+	nrows_loaded INT,
+	nrows_merged INT
+);

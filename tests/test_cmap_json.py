@@ -63,6 +63,11 @@ def test_cb_spatialfilter():
     # if our data has N objects, expect N calls of callback function
     data,_ = load_cmap_jsonfile( h_getpath('ok1.json') , spatial_filter=cb_f_mock )
     assert len(data)==cb_f_mock.call_count
+    # check recorded call arguments
+    from unittest.mock import call
+    cb_f_mock.assert_has_calls(
+            [call(_) for _ in data]
+    )
 
     # spatial filter accepting everything
     data,_ = load_cmap_jsonfile( h_getpath('ok1.json') , spatial_filter=cb_f_acceptall )

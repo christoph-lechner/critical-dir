@@ -157,7 +157,134 @@ def sighandler_term(signum, frame):
 
 #####
 
-def t_download_worker(*,stop_event, f_heartbeat: Callable=None):
+def t_download_worker(*, f_heartbeat: Callable=None):
+    settings = get_settings()
+
+    def get_fn(*, fn_extension:str='json'):
+        tnow = datetime.datetime.now()
+        tdatestr = tnow.strftime('%Y%m%d')
+        tnowstr = tnow.strftime('%Y%m%dT%H%M%S_%f') # '%f' is always 6 digits wide and padded w/ leading zeros
+        # create data directory if needed (using per-day directories for better file organization)
+        datadir = settings.api_downloader_json_outdir / tdatestr
+        datadir.mkdir(parents=False, exist_ok=True)
+        # return filename
+        return datadir / ('data_'+tnowstr+'.'+fn_extension)
+
+    def put_info_file(txt, *, dupl_to_stdout=False):
+        if dupl_to_stdout:
+            print(txt)
+        fn = get_fn(fn_extension='txt')
+        print(f'going to write infos to file {fn}')
+        with open(fn,'w') as fout:
+            fout.write(txt)
+
+    # establish DB connection
+    try:
+        conn = get_db_conn()
+        # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
+        cur = conn.cursor(row_factory=dict_row)
+    except Exception as e:
+        print('*** Could not establish DB connection ***')
+        put_info_file(traceback.format_exc(), dupl_to_stdout=True)
+        return
+
+    tprocstart = datetime.datetime.now()
+    try:
+        # TODO: add timeouts here
+        fn_out = get_fn()
+        print(f'Downloading data to file {fn_out} ...')
+        data = get_cmaps_data()
+        with open(fn_out,'w') as fout:
+            fout.write(data)
+        
+        # Heartbeat signaling everything is OK. The data was written stored in a file, so even if the following DB ingestion fails, we have the data.
+        if f_heartbeat:
+            f_heartbeat()
+        #if status['healthcheck']:
+        #    status['healthcheck'].heartbeat()
+    except Exception as e:
+        # Design idea to be implemented: Networking issues while getting the data are ok (this would also include any "bad" HTTP status codes such as 500),
+        # consider to re-raise file I/O issues to stop the program (but then a watchdog has to start another instance so that data acquisition goes on)
+        print('*** Data download resulted in exception ***')
+        put_info_file(traceback.format_exc(), dupl_to_stdout=True)
+        procstats = ProcStats(
+                tstart=tprocstart,
+                total_time = (datetime.datetime.now() - tprocstart).total_seconds(),
+                total_status = False,
+                exc_inphase='API access',
+                exc_name = type(e).__qualname__,
+                exc_info = traceback.format_exc(),
+                # 2026-06-29: at the moment not assigning HTTP response code
+                filename = str(fn_out),
+        )
+        # print(procstats)
+
+        # Note: There must not have been any SQL write access -- except storing these infos
+        store_status_info(cur, ps=procstats)
+        conn.commit()
+        return
+
+    # DB operations are in second try/catch block to make the program more robust (for instance if a single operation fails for whatever reason)
+    # TODO: add provisions for DB connection going down.
+    try:
+        # create unique names for data staging steps
+        str_t0 = tprocstart.strftime('%Y%m%dT%H%M%S')
+        stg_table = 'stg_'+str_t0
+        stg_table_hashed = stg_table + '_h'
+        stg_table_dedupl = stg_table + '_d'
+
+        data,_ = load_cmap_jsonfile(fn_out)
+
+        # prepare and populate staging table
+        nrows_loaded=0
+        prepare_stg_table(cur, stg_table)
+        for d in data:
+            nrows_loaded+=1
+            cur.execute(
+                'INSERT INTO ' +stg_table+ ' (deviceid,latitude,longitude,timestamp) VALUES (%s,%s,%s,%s)',
+                (d['device'], d['latitude'], d['longitude'], d['timestamp'])
+            )
+
+        data_add_hashes(cur, stg_table_hashed, stg_table)
+        data_dedupl(cur, stg_table_dedupl, stg_table_hashed)
+        nrows_merged = data_merge(cur, data_table=settings.datatable, stg_table=stg_table_dedupl)
+
+        procstats = ProcStats(
+                tstart=tprocstart,
+                total_time = (datetime.datetime.now() - tprocstart).total_seconds(),
+                total_status = True,
+                # 2026-06-29: at the moment not assigning HTTP response code
+                filename = str(fn_out),
+                fileok = True,
+                nrows_loaded = nrows_loaded,
+                nrows_merged = nrows_merged,
+        )
+        store_status_info(cur, ps=procstats)
+
+        conn.commit()
+    except Exception as e:
+        print('*** DB operations resulted in exception ***')
+        put_info_file(traceback.format_exc(), dupl_to_stdout=True)
+        procstats = ProcStats(
+                tstart=tprocstart,
+                total_time = (datetime.datetime.now() - tprocstart).total_seconds(),
+                total_status = False,
+                exc_inphase='DB access',
+                exc_name = type(e).__qualname__,
+                exc_info = traceback.format_exc(),
+                # 2026-06-29: at the moment not assigning HTTP response code
+                filename = str(fn_out),
+        )
+        # print(procstats)
+
+        # Here, we don't know which part of the DB operations failed
+        # -> rollback to be one the safe side
+        conn.rollback()
+        store_status_info(cur, ps=procstats)
+        conn.commit()
+        return
+
+def t_download_thread(*,stop_event, f_heartbeat: Callable=None):
     def ceil_min(dt):
         return dt.replace(second=0, microsecond=0) + datetime.timedelta(minutes=1)
     def wait_until(dt):
@@ -179,34 +306,9 @@ def t_download_worker(*,stop_event, f_heartbeat: Callable=None):
             deltat = deltat.total_seconds()
         return False
 
-    settings = get_settings()
-
-    def get_fn(*, fn_extension:str='json'):
-        tnow = datetime.datetime.now()
-        tdatestr = tnow.strftime('%Y%m%d')
-        tnowstr = tnow.strftime('%Y%m%dT%H%M%S_%f') # '%f' is always 6 digits wide and padded w/ leading zeros
-        # create data directory if needed (using per-day directories for better file organization)
-        datadir = settings.api_downloader_json_outdir / tdatestr
-        datadir.mkdir(parents=False, exist_ok=True)
-        # return filename
-        return datadir / ('data_'+tnowstr+'.'+fn_extension)
-
-    def put_info_file(txt, *, dupl_to_stdout=False):
-        if dupl_to_stdout:
-            print(txt)
-        fn = get_fn(fn_extension='txt')
-        print(f'going to write infos to file {fn}')
-        with open(fn,'w') as fout:
-            fout.write(txt)
-
     if f_heartbeat:
         if not callable(f_heartbeat):
             raise ValueError('if specified, value has to be "callable"')
-
-    # establish DB connection
-    # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
-    conn = get_db_conn()
-    cur = conn.cursor(row_factory=dict_row)
 
     # schedule first request to happen at the start of the next minute
     tnext = ceil_min( datetime.datetime.now() )
@@ -218,101 +320,8 @@ def t_download_worker(*,stop_event, f_heartbeat: Callable=None):
             print('got SIGTERM/SIGINT -> stopping')
             break
 
-        tprocstart = datetime.datetime.now()
-        try:
-            # TODO: add timeouts here
-            fn_out = get_fn()
-            print(f'Downloading data to file {fn_out} ...')
-            data = get_cmaps_data()
-            with open(fn_out,'w') as fout:
-                fout.write(data)
-            
-            # Heartbeat signaling everything is OK. The data was written stored in a file, so even if the following DB ingestion fails, we have the data.
-            if f_heartbeat:
-                f_heartbeat()
-            #if status['healthcheck']:
-            #    status['healthcheck'].heartbeat()
-        except Exception as e:
-            # Design idea to be implemented: Networking issues while getting the data are ok (this would also include any "bad" HTTP status codes such as 500),
-            # consider to re-raise file I/O issues to stop the program (but then a watchdog has to start another instance so that data acquisition goes on)
-            print('*** Data download resulted in exception ***')
-            put_info_file(traceback.format_exc(), dupl_to_stdout=True)
-            procstats = ProcStats(
-                    tstart=tprocstart,
-                    total_time = (datetime.datetime.now() - tprocstart).total_seconds(),
-                    total_status = False,
-                    exc_inphase='API access',
-                    exc_name = type(e).__qualname__,
-                    exc_info = traceback.format_exc(),
-                    # 2026-06-29: at the moment not assigning HTTP response code
-                    filename = str(fn_out),
-            )
-            # print(procstats)
+        t_download_worker(f_heartbeat=f_heartbeat)
 
-            # Note: There must not have been any SQL write access -- except storing these infos
-            store_status_info(cur, ps=procstats)
-            conn.commit()
-            continue
-
-        # DB operations are in second try/catch block to make the program more robust (for instance if a single operation fails for whatever reason)
-        # TODO: add provisions for DB connection going down.
-        try:
-            # create unique names for data staging steps
-            str_t0 = tprocstart.strftime('%Y%m%dT%H%M%S')
-            stg_table = 'stg_'+str_t0
-            stg_table_hashed = stg_table + '_h'
-            stg_table_dedupl = stg_table + '_d'
-
-            data,_ = load_cmap_jsonfile(fn_out)
-
-            # prepare and populate staging table
-            nrows_loaded=0
-            prepare_stg_table(cur, stg_table)
-            for d in data:
-                nrows_loaded+=1
-                cur.execute(
-                    'INSERT INTO ' +stg_table+ ' (deviceid,latitude,longitude,timestamp) VALUES (%s,%s,%s,%s)',
-                    (d['device'], d['latitude'], d['longitude'], d['timestamp'])
-                )
-
-            data_add_hashes(cur, stg_table_hashed, stg_table)
-            data_dedupl(cur, stg_table_dedupl, stg_table_hashed)
-            nrows_merged = data_merge(cur, data_table=settings.datatable, stg_table=stg_table_dedupl)
-
-            procstats = ProcStats(
-                    tstart=tprocstart,
-                    total_time = (datetime.datetime.now() - tprocstart).total_seconds(),
-                    total_status = True,
-                    # 2026-06-29: at the moment not assigning HTTP response code
-                    filename = str(fn_out),
-                    fileok = True,
-                    nrows_loaded = nrows_loaded,
-                    nrows_merged = nrows_merged,
-            )
-            store_status_info(cur, ps=procstats)
-
-            conn.commit()
-        except Exception as e:
-            print('*** DB operations resulted in exception ***')
-            put_info_file(traceback.format_exc(), dupl_to_stdout=True)
-            procstats = ProcStats(
-                    tstart=tprocstart,
-                    total_time = (datetime.datetime.now() - tprocstart).total_seconds(),
-                    total_status = False,
-                    exc_inphase='DB access',
-                    exc_name = type(e).__qualname__,
-                    exc_info = traceback.format_exc(),
-                    # 2026-06-29: at the moment not assigning HTTP response code
-                    filename = str(fn_out),
-            )
-            # print(procstats)
-
-            # Here, we don't know which part of the DB operations failed
-            # -> rollback to be one the safe side
-            conn.rollback()
-            store_status_info(cur, ps=procstats)
-            conn.commit()
-            continue
 
 
 def mainloop(*, status):
@@ -323,7 +332,7 @@ def mainloop(*, status):
         # because the only thing this function does is to manipulate a thread-safe object
         t_kw['f_heartbeat'] = f_heartbeat
 
-    t_dl = threading.Thread(target=t_download_worker, kwargs=t_kw)
+    t_dl = threading.Thread(target=t_download_thread, kwargs=t_kw)
     t_dl.start()
 
     while True:

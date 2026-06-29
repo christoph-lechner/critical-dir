@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import Mock
 from critical_dir.cmaps_util import load_cmap_jsonfile
 from critical_dir.cmaps_util import BadJSONDataFile
 from pathlib import Path
@@ -43,6 +44,34 @@ def test_fileload_check_data():
     assert q['latitude']==53.123456
     assert q['longitude']==10.234567
     assert q['timestamp']==1782733734
+
+def test_cb_spatialfilter():
+    """
+    Verify that spatial filter callback has correct effect on returned data
+    """
+    def cb_f_rejectall(d):
+        return False
+    def cb_f_acceptall(d):
+        return True
+
+    cb_f_mock = Mock()
+
+    # no spatial filter
+    data,_ = load_cmap_jsonfile( h_getpath('ok1.json') )
+    assert len(data)==8
+
+    # if our data has N objects, expect N calls of callback function
+    data,_ = load_cmap_jsonfile( h_getpath('ok1.json') , spatial_filter=cb_f_mock )
+    assert len(data)==cb_f_mock.call_count
+
+    # spatial filter accepting everything
+    data,_ = load_cmap_jsonfile( h_getpath('ok1.json') , spatial_filter=cb_f_acceptall )
+    assert len(data)==8
+
+    # spatial filter rejecting everything
+    data,_ = load_cmap_jsonfile( h_getpath('ok1.json') , spatial_filter=cb_f_rejectall )
+    assert len(data)==0
+
 
 def test_fileload_missing_fields():
     """

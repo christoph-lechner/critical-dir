@@ -1,0 +1,3 @@
+docker compose -f ./tests/docker/docker-compose.ci-ingest.yml build
+docker compose -f ./tests/docker/docker-compose.ci-ingest.yml run --rm tests
+docker compose -f ./tests/docker/docker-compose.ci-ingest.yml down -v

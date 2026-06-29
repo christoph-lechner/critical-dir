@@ -45,12 +45,21 @@ def load_cmap_jsonfile(datafile, *, spatial_filter=None, cb_diag_file_age=None):
             if not k in d:
                 raise BadJSONDataFile(f'missing field "{k}"')
 
+    def check_latlng(d):
+        """
+        Check that latitude/longitde values are ok.
+        Must be called before normalization of values.
+        """
+        if abs(d['latitude'])>90000000 or abs(d['longitude'])>180000000:
+            raise BadJSONDataFile('invalid latitude or longitude value')
+
     data = []
     for d in data_raw:
         # before doing any work, check if the needed fields are present
         check_fields(d, ['longitude','latitude','device','timestamp'])
-
+        check_latlng(d)
         d = normalize_coords(d)
+
         if spatial_filter and callable(spatial_filter) and spatial_filter(d)==False:
             continue
         data.append(d)

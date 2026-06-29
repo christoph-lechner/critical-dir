@@ -33,15 +33,6 @@ def test_fileload_ok():
     data,_ = load_cmap_jsonfile( h_getpath('ok0.json') )
     assert len(data)==0
 
-def test_fileload_missing_fields():
-    """
-    Test against files having an entry with missing field.
-    Note: We don't run tests with files having extra fields!
-    """
-    with pytest.raises(BadJSONDataFile):
-        for idtest in range(1,5):
-            data,_ = load_cmap_jsonfile( h_getpath(f'bad-missing-field{idtest}.json') )
-
 def test_fileload_check_data():
     """
     Verifies that data loaded from file matches file contents
@@ -52,3 +43,19 @@ def test_fileload_check_data():
     assert q['latitude']==53.123456
     assert q['longitude']==10.234567
     assert q['timestamp']==1782733734
+
+def test_fileload_missing_fields():
+    """
+    Test against files having an entry with missing field.
+    Note: We don't run tests with files having extra fields!
+    """
+    for idtest in range(1,5):
+        with pytest.raises(BadJSONDataFile):
+            data,_ = load_cmap_jsonfile( h_getpath(f'bad-missing-field{idtest}.json') )
+
+def test_fileload_bad_latlng():
+    with pytest.raises(BadJSONDataFile):
+        data,_ = load_cmap_jsonfile( h_getpath(f'bad-invalid-lat.json') )
+
+    with pytest.raises(BadJSONDataFile):
+        data,_ = load_cmap_jsonfile( h_getpath(f'bad-invalid-lng.json') )

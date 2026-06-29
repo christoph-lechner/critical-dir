@@ -30,10 +30,10 @@ def load_cmap_jsonfile(datafile, *, spatial_filter=None, cb_diag_file_age=None):
         cb_diag_file_age(age_datafile)
 
     with open(datafile,'r') as fin:
-        data_all = json.load(fin)
+        data_raw = json.load(fin)
 
     # expecting JSON file to contain a list
-    if not isinstance(data_all, list):
+    if not isinstance(data_raw, list):
         raise BadJSONDataFile('expecting JSON file to contain a list')
 
     def check_fields(d, keys):
@@ -45,12 +45,21 @@ def load_cmap_jsonfile(datafile, *, spatial_filter=None, cb_diag_file_age=None):
             if not k in d:
                 raise BadJSONDataFile(f'missing field "{k}"')
 
+    def check_latlng(d):
+        """
+        Check that latitude/longitde values are ok.
+        Must be called before normalization of values.
+        """
+        if abs(d['latitude'])>90000000 or abs(d['longitude'])>180000000:
+            raise BadJSONDataFile('invalid latitude or longitude value')
+
     data = []
-    for d in data_all:
+    for d in data_raw:
         # before doing any work, check if the needed fields are present
         check_fields(d, ['longitude','latitude','device','timestamp'])
-
+        check_latlng(d)
         d = normalize_coords(d)
+
         if spatial_filter and callable(spatial_filter) and spatial_filter(d)==False:
             continue
         data.append(d)
@@ -63,7 +72,7 @@ def load_cmap_jsonfile(datafile, *, spatial_filter=None, cb_diag_file_age=None):
     #hax.set_title('Points as loaded from JSON Data')
     #fn['scatter'] = plot_show_or_save(fig,'scatter')
 
-    # order of columns in matrix follows from what is needed for clustering using haversince_distances. 
+    # order of columns in matrix follows from what is needed for clustering using haversine_distances. 
     # According to documentation of haversine_distances, "the first coordinate of each point is assumed to be the latitude, the second is the longitude, given in radians".
     X = np.vstack((np.array(latitude),np.array(longitude)))
     X = np.transpose(X)

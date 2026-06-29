@@ -5,7 +5,11 @@ from functools import cache
 
 class Settings(BaseSettings):
     pg_dsn: PostgresDsn
-    datatable: str = 'criticalmaps_data'
+
+    # no defaults for table names, forces user to assign them and ensures correct variable names in .env files
+    datatable: str
+    statstable: str
+
     redis_host: str = 'localhost'
 
     img_dir: Path

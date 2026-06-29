@@ -178,6 +178,9 @@ def t_download_worker(*, f_heartbeat: Callable=None):
         with open(fn,'w') as fout:
             fout.write(txt)
 
+
+    tprocstart = datetime.datetime.now()
+
     # establish DB connection
     try:
         conn = get_db_conn()
@@ -188,7 +191,6 @@ def t_download_worker(*, f_heartbeat: Callable=None):
         put_info_file(traceback.format_exc(), dupl_to_stdout=True)
         return
 
-    tprocstart = datetime.datetime.now()
     try:
         # TODO: add timeouts here
         fn_out = get_fn()
@@ -220,7 +222,7 @@ def t_download_worker(*, f_heartbeat: Callable=None):
         # print(procstats)
 
         # Note: There must not have been any SQL write access -- except storing these infos
-        store_status_info(cur, ps=procstats)
+        store_status_info(cur, ps=procstats, info_table=settings.statstable)
         conn.commit()
         return
 
@@ -259,7 +261,7 @@ def t_download_worker(*, f_heartbeat: Callable=None):
                 nrows_loaded = nrows_loaded,
                 nrows_merged = nrows_merged,
         )
-        store_status_info(cur, ps=procstats)
+        store_status_info(cur, ps=procstats, info_table=settings.statstable)
 
         conn.commit()
     except Exception as e:
@@ -280,7 +282,7 @@ def t_download_worker(*, f_heartbeat: Callable=None):
         # Here, we don't know which part of the DB operations failed
         # -> rollback to be one the safe side
         conn.rollback()
-        store_status_info(cur, ps=procstats)
+        store_status_info(cur, ps=procstats, info_table=settings.statstable)
         conn.commit()
         return
 

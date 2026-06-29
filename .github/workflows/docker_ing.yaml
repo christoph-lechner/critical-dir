@@ -1,0 +1,43 @@
+name: docker_ing
+
+on:
+  push:
+    branches: master
+
+jobs:
+  tests:
+    uses: ./.github/workflows/run_pytest.yaml
+
+  docker:
+    needs: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v5
+
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: cltr/cdir-api
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: "Docker image: build image for tests"
+        run: docker compose -f ./tests/docker/docker-compose.ci-ingest.yml build
+
+      # also starts depending services (they continue to run)
+      - name: "Docker image: run tests"
+        run: docker compose -f ./tests/docker/docker-compose.ci-ingest.yml run --rm tests
+
+      - name: "Docker image: shutdown stack used for tests"
+        if: always()
+        run: docker compose -f ./tests/docker/docker-compose.ci-ingest.yml down -v
+
+      # add commands to show logs if needed
+
+      # Not pushing Docker image

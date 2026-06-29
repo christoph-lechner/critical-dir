@@ -1,3 +1,6 @@
+-- Keep in mind that changes to this file may need to be reflected in
+-- tests/docker/ .
+
 -- NOTE: if you change the definition of this table, be sure to update the data ingestion script
 CREATE TABLE criticalmaps_data(
     _h TEXT,

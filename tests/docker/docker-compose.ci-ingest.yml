@@ -1,0 +1,100 @@
+services:
+  pgdatabase:
+    image: postgres:18
+    environment:
+      - POSTGRES_USER=testuser
+      - POSTGRES_PASSWORD=testpwd
+      - POSTGRES_DB=testdb
+    # not exposing ports on host system
+    # ports:
+    #   - "5432:5432"
+    volumes:
+      # materials for pre-seeding the DB
+      - "./testdata-ing_pg:/docker-entrypoint-initdb.d/"
+    tmpfs:
+      # put DB on tmpfs to make it forget everything once we shut down
+      # -> forces DB to be initialized from sql files every time we run this
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser -d testdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Adjust permissions of data directory -> short-lived service
+  init_adjust_permissions:
+    image: alpine
+    command:
+      - sh
+      - -c
+      - |
+        chmod 0777 /stor
+    volumes:
+      - stor:/stor
+
+  cdir_ing_test:
+    build:
+      context: ../../
+      dockerfile: Dockerfile.import
+    environment:
+      # Note: do not quote the DSN.
+      - CRITICAL_DIR_PG_DSN=postgres://testuser:testpwd@pgdatabase:5432/testdb
+      - CRITICAL_DIR_DATATABLE=criticalmaps_data_test
+      - CRITICAL_DIR_STATSTABLE=criticalmaps_stats_test
+      - CRITICAL_DIR_REDIS_HOST=redis
+
+      # Remember: These paths to be specified as seen from inside the running Docker container.
+      - CRITICAL_DIR_IMG_DIR=/app/objs
+      - CRITICAL_DIR_API_DOWNLOADER_JSON_OUTDIR=/stor
+    # append test-specific argument to ENTRYPOINT given in Dockerfile
+    volumes:
+      - stor:/stor
+    command:
+      - --test_one_request
+    healthcheck:
+      disable: true
+    depends_on:
+      init_adjust_permissions:
+        condition: service_completed_successfully
+      pgdatabase:
+        condition: service_healthy
+
+  # for tests: base parameters are identical
+  tests:
+    build:
+      context: ../../
+      dockerfile: Dockerfile.import
+    environment:
+      # Note: do not quote the DSN.
+      - CRITICAL_DIR_PG_DSN=postgres://testuser:testpwd@pgdatabase:5432/testdb
+      - CRITICAL_DIR_DATATABLE=criticalmaps_data_test
+      - CRITICAL_DIR_STATSTABLE=criticalmaps_stats_test
+      - CRITICAL_DIR_REDIS_HOST=redis
+
+      # Remember: These paths to be specified as seen from inside the running Docker container.
+      - CRITICAL_DIR_IMG_DIR=/app/objs
+      - CRITICAL_DIR_API_DOWNLOADER_JSON_OUTDIR=/stor
+    profiles:
+      # specifying 'profiles' prevents this from launching when 'docker compose up -d' is issued
+      - onlytest
+    entrypoint:
+      - pytest
+      # there are issues with pytest's cache because of permissions (can't write to /app)
+      - -p no:cacheprovider
+      - /app/tests/docker-ing/
+    volumes:
+      - stor:/stor:ro
+    depends_on:
+      pgdatabase:
+        condition: service_healthy
+      init_adjust_permissions:
+        condition: service_completed_successfully
+      cdir_ing_test:
+        condition: service_completed_successfully
+
+# Named volume for sharing downloaded data files between containers for further examination,
+# These are persistent, use
+#    "docker compose down -v"
+# to drop data
+volumes:
+  stor:

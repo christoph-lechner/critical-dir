@@ -56,6 +56,7 @@ parser = argparse.ArgumentParser()
 # and HTTP status 500 if there is an issue.
 # Use for example "curl --head http://localhost:9999/check" to check.
 parser.add_argument('--status_port', type=int, help='simple HTTP server for remote status checking', default=None)
+parser.add_argument('--test_one_request', action='store_true', help='Test mode (for automatic testing): Do not loop forever, only a single request is sent')
 args = parser.parse_args()
 
 if args.status_port:
@@ -286,7 +287,7 @@ def t_download_worker(*, f_heartbeat: Callable=None):
         conn.commit()
         return
 
-def t_download_thread(*,stop_event, f_heartbeat: Callable=None):
+def t_download_thread(*,stop_event, f_heartbeat: Callable=None, test_single_request=False):
     def ceil_min(dt):
         return dt.replace(second=0, microsecond=0) + datetime.timedelta(minutes=1)
     def wait_until(dt):
@@ -312,6 +313,10 @@ def t_download_thread(*,stop_event, f_heartbeat: Callable=None):
         if not callable(f_heartbeat):
             raise ValueError('if specified, value has to be "callable"')
 
+    if test_single_request:
+        t_download_worker(f_heartbeat=f_heartbeat)
+        return
+
     # schedule first request to happen at the start of the next minute
     tnext = ceil_min( datetime.datetime.now() )
     print(f'About to enter main loop, first API access scheduled for {tnext}')
@@ -327,6 +332,8 @@ def t_download_thread(*,stop_event, f_heartbeat: Callable=None):
 
 
 def mainloop(*, status):
+    testmode = args.test_one_request
+
     t_kw = {'stop_event':stop_event}
     if status['healthcheck']:
         f_heartbeat = status['healthcheck'].heartbeat
@@ -334,16 +341,22 @@ def mainloop(*, status):
         # because the only thing this function does is to manipulate a thread-safe object
         t_kw['f_heartbeat'] = f_heartbeat
 
+    if testmode:
+        print('Running in a TEST MODE: only sending a single API request')
+        t_kw['test_single_request'] = True
+
     t_dl = threading.Thread(target=t_download_thread, kwargs=t_kw)
     t_dl.start()
 
-    while True:
-        if done_event.is_set():
-            print('main loop: got SIGTERM/SIGINT -> stopping')
-            break
+    if not testmode:
+        # FIXME 2026-06-29: it appears this loop is not needed (anymore) -> think about it
+        while True:
+            if done_event.is_set():
+                print('main loop: got SIGTERM/SIGINT -> stopping')
+                break
 
-        # short sleeps to avoid busy waiting
-        time.sleep(1)
+            # short sleeps to avoid busy waiting
+            time.sleep(1)
 
     t_dl.join()
     if status['healthcheck']:

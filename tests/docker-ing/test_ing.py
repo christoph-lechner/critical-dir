@@ -3,7 +3,7 @@ from critical_dir.settings import get_settings
 from psycopg.rows import dict_row
 import os
 
-def test_demo(capsys):
+def test_ingestion(capsys):
     """
     First tests for ingestion script.
     After performing API request, inspect database.
@@ -42,3 +42,33 @@ def test_demo(capsys):
 
     # test file describes 8 devices, so we expect 8 rows in DB
     assert 8==datatable_nrows
+
+def test_idempotence(capsys):
+    """
+    Evaluates the test for idempotence.
+    As of June-2026, this test is performed by running the same import twice.
+    """
+    conn = get_db_conn()
+    # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
+    cur = conn.cursor(row_factory=dict_row)
+
+    ### get number of rows in data table
+    # FIXME: hard-coded table name
+    cur.execute(f'SELECT COUNT(*) AS c FROM criticalmaps_data_test_idempotency;')
+    res = cur.fetchone()
+    assert res is not None
+    datatable_nrows = res['c']
+
+    # test file describes 8 devices, so we expect 8 rows in DB
+    assert 8==datatable_nrows
+
+
+    ### test that there were actually two successful runs...
+    cur.execute(f"SELECT COUNT(*) AS c FROM criticalmaps_stats_test_idempotency WHERE total_status='1';")
+    res = cur.fetchone()
+    assert res is not None
+    statstable_nrows = res['c']
+
+    # test file describes 8 devices, so we expect 8 rows in DB
+    assert 2==statstable_nrows
+

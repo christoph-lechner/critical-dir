@@ -10,6 +10,7 @@ x-ing-env: &ing-env
   CRITICAL_DIR_API_DOWNLOADER_JSON_OUTDIR: /stor
 
 x-ing: &ing
+  # to make it more explicit, 'depends_on' is NOT part of this block
   build:
     context: ../../
     dockerfile: Dockerfile.import
@@ -23,11 +24,6 @@ x-ing: &ing
     - --override_api_url=file:///app/tests/ing-test-jsons/ok1.json
   healthcheck:
     disable: true
-  depends_on:
-    init_adjust_permissions:
-      condition: service_completed_successfully
-    pgdatabase:
-      condition: service_healthy
 
 # Named volume for sharing downloaded data files between containers for further examination,
 # These are persistent, use
@@ -75,9 +71,43 @@ services:
     <<: *ing
     environment:
       <<: *ing-env
+    depends_on:
+      init_adjust_permissions:
+        condition: service_completed_successfully
+      pgdatabase:
+        condition: service_healthy
+
+  ### Test of Idempotency ###
+  # Run the Docker image twice against the same table.
+  # 'pytest' verifies that it does not affect the outcome.
+  cdir_ing_idempotency1:
+    <<: *ing
+    environment:
+      <<: *ing-env
+      CRITICAL_DIR_DATATABLE: criticalmaps_data_test_idempotency
+      CRITICAL_DIR_STATSTABLE: criticalmaps_stats_test_idempotency
+    depends_on:
+      init_adjust_permissions:
+        condition: service_completed_successfully
+      pgdatabase:
+        condition: service_healthy
+  cdir_ing_idempotency2:
+    <<: *ing
+    environment:
+      <<: *ing-env
+      CRITICAL_DIR_DATATABLE: criticalmaps_data_test_idempotency
+      CRITICAL_DIR_STATSTABLE: criticalmaps_stats_test_idempotency
+    depends_on:
+      init_adjust_permissions:
+        condition: service_completed_successfully
+      pgdatabase:
+        condition: service_healthy
+      cdir_ing_idempotency1:
+        # ensures that the two idempotency tests run sequentially
+        condition: service_completed_successfully
 
 
-  # for tests: base parameters are identical
+  # Run the tests: base parameters are identical
   tests:
     build:
       context: ../../
@@ -109,4 +139,7 @@ services:
         condition: service_completed_successfully
       cdir_ing:
         condition: service_completed_successfully
-
+      cdir_ing_idempotency1:
+        condition: service_completed_successfully
+      cdir_ing_idempotency2:
+        condition: service_completed_successfully

@@ -1,3 +1,41 @@
+x-ing-env: &ing-env
+  # Note: do not quote the DSN.
+  CRITICAL_DIR_PG_DSN: postgres://testuser:testpwd@pgdatabase:5432/testdb
+  CRITICAL_DIR_DATATABLE: criticalmaps_data_test
+  CRITICAL_DIR_STATSTABLE: criticalmaps_stats_test
+  CRITICAL_DIR_REDIS_HOST: redis
+
+  # Remember: These paths to be specified as seen from inside the running Docker container.
+  CRITICAL_DIR_IMG_DIR: /app/objs
+  CRITICAL_DIR_API_DOWNLOADER_JSON_OUTDIR: /stor
+
+x-ing: &ing
+  build:
+    context: ../../
+    dockerfile: Dockerfile.import
+  # !Note environment not specified here, it will be added when assembling everything!
+  volumes:
+    - stor:/stor
+  # append test-specific argument to ENTRYPOINT given in Dockerfile
+  command:
+    - --test_one_request
+    # !file path as seen from inside Docker container!
+    - --override_api_url=file:///app/tests/ing-test-jsons/ok1.json
+  healthcheck:
+    disable: true
+  depends_on:
+    init_adjust_permissions:
+      condition: service_completed_successfully
+    pgdatabase:
+      condition: service_healthy
+
+# Named volume for sharing downloaded data files between containers for further examination,
+# These are persistent, use
+#    "docker compose down -v"
+# to drop data
+volumes:
+  stor:
+
 services:
   pgdatabase:
     image: postgres:18
@@ -32,34 +70,12 @@ services:
     volumes:
       - stor:/stor
 
-  cdir_ing_test:
-    build:
-      context: ../../
-      dockerfile: Dockerfile.import
-    environment:
-      # Note: do not quote the DSN.
-      - CRITICAL_DIR_PG_DSN=postgres://testuser:testpwd@pgdatabase:5432/testdb
-      - CRITICAL_DIR_DATATABLE=criticalmaps_data_test
-      - CRITICAL_DIR_STATSTABLE=criticalmaps_stats_test
-      - CRITICAL_DIR_REDIS_HOST=redis
 
-      # Remember: These paths to be specified as seen from inside the running Docker container.
-      - CRITICAL_DIR_IMG_DIR=/app/objs
-      - CRITICAL_DIR_API_DOWNLOADER_JSON_OUTDIR=/stor
-    # append test-specific argument to ENTRYPOINT given in Dockerfile
-    volumes:
-      - stor:/stor
-    command:
-      - --test_one_request
-      # !file path as seen from inside Docker container!
-      - --override_api_url=file:///app/tests/ing-test-jsons/ok1.json
-    healthcheck:
-      disable: true
-    depends_on:
-      init_adjust_permissions:
-        condition: service_completed_successfully
-      pgdatabase:
-        condition: service_healthy
+  cdir_ing:
+    <<: *ing
+    environment:
+      <<: *ing-env
+
 
   # for tests: base parameters are identical
   tests:
@@ -91,12 +107,6 @@ services:
         condition: service_healthy
       init_adjust_permissions:
         condition: service_completed_successfully
-      cdir_ing_test:
+      cdir_ing:
         condition: service_completed_successfully
 
-# Named volume for sharing downloaded data files between containers for further examination,
-# These are persistent, use
-#    "docker compose down -v"
-# to drop data
-volumes:
-  stor:

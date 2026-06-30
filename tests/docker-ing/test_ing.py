@@ -39,3 +39,6 @@ def test_demo(capsys):
     """
 
     assert statstable_nrows == datatable_nrows
+
+    # test file describes 8 devices, so we expect 8 rows in DB
+    assert 8==datatable_nrows

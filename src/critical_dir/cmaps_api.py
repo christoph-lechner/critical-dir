@@ -1,8 +1,16 @@
 import requests
+from urllib.parse import urlsplit
+from pathlib import Path
 
-def get_cmaps_data():
+def get_cmaps_data(api_url = 'https://api-cdn.criticalmaps.net/locations'):
     # API URL and Headers from network traffic of CriticalMaps Web Map
-    api_url = 'https://api-cdn.criticalmaps.net/locations'
+
+    # handle "file://..." URLs (needed for testing)
+    q = urlsplit(api_url)
+    if q.scheme=='file':
+        p = Path(q.path)
+        return p.read_text() # returns a 'str', as does the main code path for http/https requests
+
     """
     headers = {
         'User-Agent': 'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:149.0) Gecko/20100101 Firefox/149.0',

@@ -56,6 +56,7 @@ parser = argparse.ArgumentParser()
 # and HTTP status 500 if there is an issue.
 # Use for example "curl --head http://localhost:9999/check" to check.
 parser.add_argument('--status_port', type=int, help='simple HTTP server for remote status checking', default=None)
+parser.add_argument('--override_api_url', type=str, help='override API URL to access (for automatic testing, can be http/https/file URL)')
 parser.add_argument('--test_one_request', action='store_true', help='Test mode (for automatic testing): Do not loop forever, only a single request is sent')
 args = parser.parse_args()
 
@@ -158,7 +159,7 @@ def sighandler_term(signum, frame):
 
 #####
 
-def t_download_worker(*, f_heartbeat: Callable=None):
+def download_worker(*, f_heartbeat: Callable=None, api_url=None):
     settings = get_settings()
 
     def get_fn(*, fn_extension:str='json'):
@@ -196,7 +197,11 @@ def t_download_worker(*, f_heartbeat: Callable=None):
         # TODO: add timeouts here
         fn_out = get_fn()
         print(f'Downloading data to file {fn_out} ...')
-        data = get_cmaps_data()
+        # passing optional parameter using 'kwargs', prevents overriding default value given in function def
+        kwargs = {}
+        if api_url:
+            kwargs = {'api_url': api_url}
+        data = get_cmaps_data(**kwargs)
         with open(fn_out,'w') as fout:
             fout.write(data)
         
@@ -287,7 +292,7 @@ def t_download_worker(*, f_heartbeat: Callable=None):
         conn.commit()
         return
 
-def t_download_thread(*,stop_event, f_heartbeat: Callable=None, test_single_request=False):
+def t_download_thread(*,stop_event, f_heartbeat: Callable=None, test_single_request=False, override_api_url=None):
     def ceil_min(dt):
         return dt.replace(second=0, microsecond=0) + datetime.timedelta(minutes=1)
     def wait_until(dt):
@@ -313,8 +318,16 @@ def t_download_thread(*,stop_event, f_heartbeat: Callable=None, test_single_requ
         if not callable(f_heartbeat):
             raise ValueError('if specified, value has to be "callable"')
 
+    # prepare arguments for worker
+    kwargs = {}
+    if f_heartbeat:
+        kwargs['f_heartbeat'] = f_heartbeat
+    if override_api_url:
+        kwargs['api_url'] = override_api_url
+
     if test_single_request:
-        t_download_worker(f_heartbeat=f_heartbeat)
+        # special case for automatic testing
+        download_worker(**kwargs)
         return
 
     # schedule first request to happen at the start of the next minute
@@ -327,13 +340,11 @@ def t_download_thread(*,stop_event, f_heartbeat: Callable=None, test_single_requ
             print('got SIGTERM/SIGINT -> stopping')
             break
 
-        t_download_worker(f_heartbeat=f_heartbeat)
+        download_worker(**kwargs)
 
 
 
 def mainloop(*, status):
-    testmode = args.test_one_request
-
     t_kw = {'stop_event':stop_event}
     if status['healthcheck']:
         f_heartbeat = status['healthcheck'].heartbeat
@@ -341,6 +352,11 @@ def mainloop(*, status):
         # because the only thing this function does is to manipulate a thread-safe object
         t_kw['f_heartbeat'] = f_heartbeat
 
+    if args.override_api_url:
+        print(f'overriding API URL to {args.override_api_url}')
+        t_kw['override_api_url'] = args.override_api_url
+
+    testmode = args.test_one_request
     if testmode:
         print('Running in a TEST MODE: only sending a single API request')
         t_kw['test_single_request'] = True

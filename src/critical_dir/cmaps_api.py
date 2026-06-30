@@ -9,7 +9,8 @@ def get_cmaps_data(api_url = 'https://api-cdn.criticalmaps.net/locations'):
     q = urlsplit(api_url)
     if q.scheme=='file':
         p = Path(q.path)
-        return p.read_text() # returns a 'str', as does the main code path for http/https requests
+        with open(p, 'r', encoding='utf-8') as fin:
+            return fin.read() # returns a 'str', as does the main code path for http/https requests
 
     """
     headers = {

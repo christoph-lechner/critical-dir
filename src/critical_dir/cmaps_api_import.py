@@ -38,7 +38,8 @@ class ProcStats:
     fileok: bool = None
     filename: str = None
     nrows_loaded: int = None
-    nrows_merged: int = None
+    nrows_inserts: int = None
+    nrows_updates: int = None
 
 """
 Configuration of data output directory via environment variable
@@ -127,25 +128,35 @@ def data_merge(cur, *, data_table, stg_table):
     # Note: On match: updating data values since there could be changes to the data at a later time
     cur.execute(
         f"""
-        MERGE
-        INTO
-            {data_table} AS dst
-        USING
-            {stg_table} AS src
-        ON
-            dst._h=src._h
-        WHEN MATCHED THEN
-            UPDATE SET deviceid=src.deviceid, latitude=src.latitude, longitude=src.longitude, timestamp=src.timestamp
-        WHEN NOT MATCHED THEN
-            INSERT VALUES (_h,deviceid,latitude,longitude,timestamp);
+        WITH q AS(
+            MERGE
+            INTO
+                {data_table} AS dst
+            USING
+                {stg_table} AS src
+            ON
+                dst._h=src._h
+            WHEN MATCHED THEN
+                UPDATE SET deviceid=src.deviceid, latitude=src.latitude, longitude=src.longitude, timestamp=src.timestamp
+            WHEN NOT MATCHED THEN
+                INSERT VALUES (_h,deviceid,latitude,longitude,timestamp)
+            RETURNING
+                -- merge_action() is new in PostgreSQL v18
+                dst._h, merge_action() AS action
+        )
+        SELECT
+        	COUNT(*) FILTER (WHERE action='INSERT') AS n_inserts,
+        	COUNT(*) FILTER (WHERE action='UPDATE') AS n_updates
+        FROM q;
         """
     )
-    return cur.rowcount
+    res = cur.fetchone()
+    return res['n_inserts'],res['n_updates']
 
 def store_status_info(cur, ps: ProcStats, info_table='criticalmaps_stats_dev'):
     cur.execute(
-        'INSERT INTO ' +info_table+ ' (ts,total_time,total_status,   exc_inphase,exc_name,exc_info,   api_http_response_code,   fileok,filename,nrows_loaded,nrows_merged) VALUES (%s,%s,%s,   %s,%s,%s,   %s,   %s,%s,%s,%s)',
-        (ps.tstart,ps.total_time,ps.total_status,   ps.exc_inphase,ps.exc_name,ps.exc_info,   ps.api_http_response_code,   ps.fileok,ps.filename,ps.nrows_loaded,ps.nrows_merged)
+        'INSERT INTO ' +info_table+ ' (ts,total_time,total_status,   exc_inphase,exc_name,exc_info,   api_http_response_code,   fileok,filename,nrows_loaded,nrows_inserts,nrows_updates) VALUES (%s,%s,%s,   %s,%s,%s,   %s,   %s,%s,%s,%s,%s)',
+        (ps.tstart,ps.total_time,ps.total_status,   ps.exc_inphase,ps.exc_name,ps.exc_info,   ps.api_http_response_code,   ps.fileok,ps.filename,ps.nrows_loaded,ps.nrows_inserts,ps.nrows_updates)
     )
 
 #####
@@ -255,7 +266,7 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
 
         data_add_hashes(cur, stg_table_hashed, stg_table)
         data_dedupl(cur, stg_table_dedupl, stg_table_hashed)
-        nrows_merged = data_merge(cur, data_table=settings.datatable, stg_table=stg_table_dedupl)
+        nrows_inserts,nrows_updates = data_merge(cur, data_table=settings.datatable, stg_table=stg_table_dedupl)
 
         procstats = ProcStats(
                 tstart=tprocstart,
@@ -265,7 +276,8 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
                 filename = str(fn_out),
                 fileok = True,
                 nrows_loaded = nrows_loaded,
-                nrows_merged = nrows_merged,
+                nrows_inserts = nrows_inserts,
+                nrows_updates = nrows_updates
         )
         store_status_info(cur, ps=procstats, info_table=settings.statstable)
 

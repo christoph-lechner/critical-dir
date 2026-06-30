@@ -26,17 +26,13 @@ def test_ingestion(capsys):
     assert res is not None
     datatable_nrows = res['c']
 
-    ### get number of rows from stats table
-    cur.execute(f"SELECT nrows_merged FROM {settings.statstable} WHERE total_status='1';")
+    ### get number of rows from stats table (and test that there were only INSERTs)
+    cur.execute(f"SELECT nrows_inserts,nrows_updates FROM {settings.statstable} WHERE total_status='1';")
     res = cur.fetchall()
     # after loading one file, we expect exact one line
     assert len(res)==1
-    statstable_nrows = res[0]['nrows_merged']
-
-    """
-    with capsys.disabled():
-        print(res[0]['nrows_merged'])
-    """
+    assert 0==res[0]['nrows_updates']
+    statstable_nrows = res[0]['nrows_inserts']
 
     assert statstable_nrows == datatable_nrows
 
@@ -60,15 +56,26 @@ def test_idempotence(capsys):
     datatable_nrows = res['c']
 
     # test file describes 8 devices, so we expect 8 rows in DB
-    assert 8==datatable_nrows
-
+    nrows_expected = 8
+    assert nrows_expected==datatable_nrows
 
     ### test that there were actually two successful runs...
     cur.execute(f"SELECT COUNT(*) AS c FROM criticalmaps_stats_test_idempotency WHERE total_status='1';")
     res = cur.fetchone()
     assert res is not None
-    statstable_nrows = res['c']
 
-    # test file describes 8 devices, so we expect 8 rows in DB
+    statstable_nrows = res['c']
     assert 2==statstable_nrows
 
+    ### verify that operation that came first resulted in only INSERTs, second operation only UPDATEs (same dataset)
+    # FIXME: hard-coded table name
+    cur.execute(f"SELECT ts,nrows_inserts,nrows_updates FROM criticalmaps_stats_test_idempotency WHERE total_status='1' ORDER BY ts ASC;")
+    res = cur.fetchall()
+    assert len(res)==2
+    #with capsys.disabled():
+    #    print(res)
+
+    assert res[0]['nrows_inserts']==nrows_expected
+    assert res[0]['nrows_updates']==0
+    assert res[1]['nrows_inserts']==0
+    assert res[1]['nrows_updates']==nrows_expected

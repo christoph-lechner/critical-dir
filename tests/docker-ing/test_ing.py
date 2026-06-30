@@ -26,17 +26,13 @@ def test_ingestion(capsys):
     assert res is not None
     datatable_nrows = res['c']
 
-    ### get number of rows from stats table
-    cur.execute(f"SELECT nrows_merged FROM {settings.statstable} WHERE total_status='1';")
+    ### get number of rows from stats table (and test that there were only INSERTs)
+    cur.execute(f"SELECT nrows_inserts,nrows_updates FROM {settings.statstable} WHERE total_status='1';")
     res = cur.fetchall()
     # after loading one file, we expect exact one line
     assert len(res)==1
-    statstable_nrows = res[0]['nrows_merged']
-
-    """
-    with capsys.disabled():
-        print(res[0]['nrows_merged'])
-    """
+    assert 0==res[0]['nrows_updates']
+    statstable_nrows = res[0]['nrows_inserts']
 
     assert statstable_nrows == datatable_nrows
 
@@ -67,8 +63,7 @@ def test_idempotence(capsys):
     cur.execute(f"SELECT COUNT(*) AS c FROM criticalmaps_stats_test_idempotency WHERE total_status='1';")
     res = cur.fetchone()
     assert res is not None
-    statstable_nrows = res['c']
 
-    # test file describes 8 devices, so we expect 8 rows in DB
+    statstable_nrows = res['c']
     assert 2==statstable_nrows
 

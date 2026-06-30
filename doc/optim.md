@@ -1,1 +1,0 @@
-- for small clusters, the call to `query\_utm\_crs\_info` in dominates the total run time of the code in `wip\_subclusters.py

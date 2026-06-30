@@ -51,6 +51,8 @@ services:
       - stor:/stor
     command:
       - --test_one_request
+      # !file path as seen from inside Docker container!
+      - --override_api_url=file:///app/tests/ing-test-jsons/ok1.json
     healthcheck:
       disable: true
     depends_on:

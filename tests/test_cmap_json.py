@@ -14,31 +14,28 @@ def test_interface():
     """
     Basic interface checks
     """
-    json_file1 = h_getpath('ok1.json')
 
-    # we expect the function to return a tuple of length 2
-    r_tuple = load_cmap_jsonfile(json_file1)
-    assert len(r_tuple)==2
-    assert isinstance(r_tuple, tuple)
-    assert isinstance(r_tuple[0], list)
+    # we expect the function to return a list
+    r = load_cmap_jsonfile( h_getpath('ok1.json') )
+    assert isinstance(r, list)
 
 def test_fileload_ok():
     """
     Can we load a good file?
     """
-    data,_ = load_cmap_jsonfile( h_getpath('ok1.json') )
+    data = load_cmap_jsonfile( h_getpath('ok1.json') )
     assert isinstance(data, list)
     assert len(data)==8
 
     # what happens when we load JSON file having zero device entries?
-    data,_ = load_cmap_jsonfile( h_getpath('ok0.json') )
+    data = load_cmap_jsonfile( h_getpath('ok0.json') )
     assert len(data)==0
 
 def test_fileload_check_data():
     """
     Verifies that data loaded from file matches file contents
     """
-    data,_ = load_cmap_jsonfile( h_getpath('ok1.json') )
+    data = load_cmap_jsonfile( h_getpath('ok1.json') )
     q = data[1]
     assert q['device']=='28ef'
     assert q['latitude']==53.123456
@@ -57,11 +54,11 @@ def test_cb_spatialfilter():
     cb_f_mock = Mock()
 
     # no spatial filter
-    data,_ = load_cmap_jsonfile( h_getpath('ok1.json') )
+    data = load_cmap_jsonfile( h_getpath('ok1.json') )
     assert len(data)==8
 
     # if our data has N objects, expect N calls of callback function
-    data,_ = load_cmap_jsonfile( h_getpath('ok1.json') , spatial_filter=cb_f_mock )
+    data = load_cmap_jsonfile( h_getpath('ok1.json'), spatial_filter=cb_f_mock )
     assert len(data)==cb_f_mock.call_count
     # check recorded call arguments
     from unittest.mock import call
@@ -70,11 +67,11 @@ def test_cb_spatialfilter():
     )
 
     # spatial filter accepting everything
-    data,_ = load_cmap_jsonfile( h_getpath('ok1.json') , spatial_filter=cb_f_acceptall )
+    data = load_cmap_jsonfile( h_getpath('ok1.json'), spatial_filter=cb_f_acceptall )
     assert len(data)==8
 
     # spatial filter rejecting everything
-    data,_ = load_cmap_jsonfile( h_getpath('ok1.json') , spatial_filter=cb_f_rejectall )
+    data = load_cmap_jsonfile( h_getpath('ok1.json'), spatial_filter=cb_f_rejectall )
     assert len(data)==0
 
 
@@ -85,11 +82,11 @@ def test_fileload_missing_fields():
     """
     for idtest in range(1,5):
         with pytest.raises(BadJSONDataFile):
-            data,_ = load_cmap_jsonfile( h_getpath(f'bad-missing-field{idtest}.json') )
+            data = load_cmap_jsonfile( h_getpath(f'bad-missing-field{idtest}.json') )
 
 def test_fileload_bad_latlng():
     with pytest.raises(BadJSONDataFile):
-        data,_ = load_cmap_jsonfile( h_getpath(f'bad-invalid-lat.json') )
+        data = load_cmap_jsonfile( h_getpath(f'bad-invalid-lat.json') )
 
     with pytest.raises(BadJSONDataFile):
-        data,_ = load_cmap_jsonfile( h_getpath(f'bad-invalid-lng.json') )
+        data = load_cmap_jsonfile( h_getpath(f'bad-invalid-lng.json') )

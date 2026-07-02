@@ -1,5 +1,4 @@
 import json
-import numpy as np
 import os
 import time
 
@@ -17,8 +16,8 @@ def normalize_coords(d):
     def my_helper(d,key):
         if key in d:
             d[key] = d[key]/1.0e6
-    my_helper(d,'longitude')
     my_helper(d,'latitude')
+    my_helper(d,'longitude')
     return d
 
 def load_cmap_jsonfile(datafile, *, spatial_filter=None, cb_diag_file_age=None):
@@ -64,19 +63,4 @@ def load_cmap_jsonfile(datafile, *, spatial_filter=None, cb_diag_file_age=None):
             continue
         data.append(d)
 
-    longitude = [_['longitude'] for _ in data]
-    latitude  = [_['latitude']  for _ in data]
-
-    #fig,hax = plot_new()
-    #hax.plot(longitude, latitude, 'o')
-    #hax.set_title('Points as loaded from JSON Data')
-    #fn['scatter'] = plot_show_or_save(fig,'scatter')
-
-    # order of columns in matrix follows from what is needed for clustering using haversine_distances. 
-    # According to documentation of haversine_distances, "the first coordinate of each point is assumed to be the latitude, the second is the longitude, given in radians".
-    X = np.vstack((np.array(latitude),np.array(longitude)))
-    X = np.transpose(X)
-    # print(X)
-
-    return data,X
-
+    return data

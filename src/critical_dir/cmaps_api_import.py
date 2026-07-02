@@ -252,7 +252,7 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
         stg_table_hashed = stg_table + '_h'
         stg_table_dedupl = stg_table + '_d'
 
-        data,_ = load_cmap_jsonfile(fn_out)
+        data = load_cmap_jsonfile(fn_out)
 
         # prepare and populate staging table
         nrows_loaded=0

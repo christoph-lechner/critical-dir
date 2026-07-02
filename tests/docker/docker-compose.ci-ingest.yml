@@ -10,18 +10,13 @@ x-ing-env: &ing-env
   CRITICAL_DIR_API_DOWNLOADER_JSON_OUTDIR: /stor
 
 x-ing: &ing
-  # to make it more explicit, 'depends_on' is NOT part of this block
+  # to make it more explicit, 'depends_on' and 'command' are not NOT part of this block
   build:
     context: ../../
     dockerfile: Dockerfile.import
   # !Note environment not specified here, it will be added when assembling everything!
   volumes:
     - stor:/stor
-  # append test-specific argument to ENTRYPOINT given in Dockerfile
-  command:
-    - --test_one_request
-    # !file path as seen from inside Docker container!
-    - --override_api_url=file:///app/tests/ing-test-jsons/ok1.json
   healthcheck:
     disable: true
 
@@ -71,6 +66,11 @@ services:
     <<: *ing
     environment:
       <<: *ing-env
+    # append test-specific argument to ENTRYPOINT given in Dockerfile
+    command:
+      - --test_one_request
+      # !file path as seen from inside Docker container!
+      - --override_api_url=file:///app/tests/ing-test-jsons/ok1.json
     depends_on:
       init_adjust_permissions:
         condition: service_completed_successfully
@@ -86,17 +86,28 @@ services:
       <<: *ing-env
       CRITICAL_DIR_DATATABLE: criticalmaps_data_test_idempotency
       CRITICAL_DIR_STATSTABLE: criticalmaps_stats_test_idempotency
+    # append test-specific argument to ENTRYPOINT given in Dockerfile
+    command:
+      - --test_one_request
+      # !file path as seen from inside Docker container!
+      - --override_api_url=file:///app/tests/ing-test-jsons/ok1.json
     depends_on:
       init_adjust_permissions:
         condition: service_completed_successfully
       pgdatabase:
         condition: service_healthy
+
   cdir_ing_idempotency2:
     <<: *ing
     environment:
       <<: *ing-env
       CRITICAL_DIR_DATATABLE: criticalmaps_data_test_idempotency
       CRITICAL_DIR_STATSTABLE: criticalmaps_stats_test_idempotency
+    # append test-specific argument to ENTRYPOINT given in Dockerfile
+    command:
+      - --test_one_request
+      # !file path as seen from inside Docker container!
+      - --override_api_url=file:///app/tests/ing-test-jsons/ok1.json
     depends_on:
       init_adjust_permissions:
         condition: service_completed_successfully
@@ -107,7 +118,44 @@ services:
         condition: service_completed_successfully
 
 
-  # Run the tests: base parameters are identical
+  ### Test with bad files ###
+  cdir_ing_badlat:
+    <<: *ing
+    environment:
+      <<: *ing-env
+      CRITICAL_DIR_DATATABLE: criticalmaps_data_test_badlat
+      CRITICAL_DIR_STATSTABLE: criticalmaps_stats_test_badlat
+    # append test-specific argument to ENTRYPOINT given in Dockerfile
+    command:
+      - --test_one_request
+      # !file path as seen from inside Docker container!
+      - --override_api_url=file:///app/tests/ing-test-jsons/bad-invalid-lat.json
+    depends_on:
+      init_adjust_permissions:
+        condition: service_completed_successfully
+      pgdatabase:
+        condition: service_healthy
+
+  cdir_ing_badlng:
+    <<: *ing
+    environment:
+      <<: *ing-env
+      CRITICAL_DIR_DATATABLE: criticalmaps_data_test_badlng
+      CRITICAL_DIR_STATSTABLE: criticalmaps_stats_test_badlng
+    # append test-specific argument to ENTRYPOINT given in Dockerfile
+    command:
+      - --test_one_request
+      # !file path as seen from inside Docker container!
+      - --override_api_url=file:///app/tests/ing-test-jsons/bad-invalid-lng.json
+    depends_on:
+      init_adjust_permissions:
+        condition: service_completed_successfully
+      pgdatabase:
+        condition: service_healthy
+
+
+  ### Run Analysis of Tests ###
+  # Base parameters are identical
   tests:
     build:
       context: ../../
@@ -142,4 +190,8 @@ services:
       cdir_ing_idempotency1:
         condition: service_completed_successfully
       cdir_ing_idempotency2:
+        condition: service_completed_successfully
+      cdir_ing_badlat:
+        condition: service_completed_successfully
+      cdir_ing_badlng:
         condition: service_completed_successfully

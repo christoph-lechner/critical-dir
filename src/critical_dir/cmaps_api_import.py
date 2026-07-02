@@ -116,6 +116,17 @@ def data_dedupl(cur, stg_dest, stg_src):
     )
     return cur.rowcount
 
+def data_check_rules(cur, stg):
+    # add new column with OK flag (initially, before testing the conditions all entries are 'ok')
+    cur.execute(f'ALTER TABLE {stg} ADD COLUMN flag_ok INT;')
+    cur.execute(f'UPDATE {stg} SET flag_ok=1;')
+
+    # Rule checks
+    # Note: These checks must only zero flag_ok, NEVER set the flag to 1!
+    cur.execute(f'UPDATE {stg} SET flag_ok=0 WHERE ABS(latitude)>90;')
+    cur.execute(f'UPDATE {stg} SET flag_ok=0 WHERE ABS(longitude)>180;')
+    # TODO: add time filter rejecting too old entries
+
 
 def data_merge(cur, *, data_table, stg_table):
     # Note: On match: updating data values since there could be changes to the data at a later time
@@ -126,7 +137,7 @@ def data_merge(cur, *, data_table, stg_table):
             INTO
                 {data_table} AS dst
             USING
-                {stg_table} AS src
+                (SELECT * FROM {stg_table} WHERE flag_ok=1) src
             ON
                 dst._h=src._h
             WHEN MATCHED THEN
@@ -239,8 +250,8 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
         conn.commit()
         return False
 
-    # DB operations are in second try/catch block to make the program more robust (for instance if a single operation fails for whatever reason)
-    # TODO: add provisions for DB connection going down.
+    # DB operations are in third try/catch block to make the program more robust
+    # (for instance if a single operation fails for whatever reason)
     try:
         # create unique names for data staging steps
         str_t0 = tprocstart.strftime('%Y%m%dT%H%M%S')
@@ -262,6 +273,7 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
 
         data_add_hashes(cur, stg_table_hashed, stg_table)
         data_dedupl(cur, stg_table_dedupl, stg_table_hashed)
+        data_check_rules(cur, stg_table_dedupl) # adds column with "OK flag" to the table
         nrows_inserts,nrows_updates = data_merge(cur, data_table=settings.datatable, stg_table=stg_table_dedupl)
 
         procstats = ProcStats(

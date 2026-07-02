@@ -41,17 +41,8 @@ def load_cmap_jsonfile(datafile, *, spatial_filter=None, cb_diag_file_age=None):
     if not isinstance(data_raw, list):
         raise BadJSONDataFile('expecting JSON file to contain a list')
 
-    def check_latlng(d):
-        """
-        Check that latitude/longitde values are ok.
-        Must be called before normalization of values.
-        """
-        if abs(d.latitude)>90000000 or abs(d.longitude)>180000000:
-            raise BadJSONDataFile('invalid latitude or longitude value')
-
     data = []
     for draw in data_raw:
-        check_latlng(draw)
         """
         The JSON contains the geolocation data as Int, scaled by 1E6.
         Does not modify or remove any other fields.
@@ -62,10 +53,8 @@ def load_cmap_jsonfile(datafile, *, spatial_filter=None, cb_diag_file_age=None):
                 longitude = draw.longitude/1.0e6,
                 timestamp = draw.timestamp
             )
-
         if spatial_filter and callable(spatial_filter) and spatial_filter(d)==False:
             continue
-
         data.append(d)
 
     return data

@@ -84,9 +84,13 @@ def test_fileload_missing_fields():
         with pytest.raises( (BadJSONDataFile,ValidationError) ):
             data = load_cmap_jsonfile( h_getpath(f'bad-missing-field{idtest}.json') )
 
+"""
+# Test disabled because "business logic" has been moved to SQL
+# -> need to add new test for this
 def test_fileload_bad_latlng():
     with pytest.raises(BadJSONDataFile):
         data = load_cmap_jsonfile( h_getpath(f'bad-invalid-lat.json') )
 
     with pytest.raises(BadJSONDataFile):
         data = load_cmap_jsonfile( h_getpath(f'bad-invalid-lng.json') )
+"""

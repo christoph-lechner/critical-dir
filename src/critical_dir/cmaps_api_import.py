@@ -40,6 +40,7 @@ class ProcStats:
     nrows_loaded: int = None
     nrows_inserts: int = None
     nrows_updates: int = None
+    nrows_quarantine: int = None
 
 """
 Configuration of data output directory via environment variable
@@ -154,13 +155,19 @@ def data_merge(cur, *, data_table, stg_table):
         FROM q;
         """
     )
-    res = cur.fetchone()
-    return res['n_inserts'],res['n_updates']
+    res_m = cur.fetchone()
+
+    # Count number of rows that do not meet requirements
+    # -> TODO: put them into quarantine
+    cur.execute(f'SELECT COUNT(*) AS c FROM {stg_table} WHERE flag_ok=0;')
+    res_c = cur.fetchone()
+
+    return res_m['n_inserts'],res_m['n_updates'],res_c['c']
 
 def store_status_info(cur, ps: ProcStats, info_table='criticalmaps_stats_dev'):
     cur.execute(
-        'INSERT INTO ' +info_table+ ' (ts,total_time,total_status,   exc_inphase,exc_name,exc_info,   api_http_response_code,   fileok,filename,nrows_loaded,nrows_inserts,nrows_updates) VALUES (%s,%s,%s,   %s,%s,%s,   %s,   %s,%s,%s,%s,%s)',
-        (ps.tstart,ps.total_time,ps.total_status,   ps.exc_inphase,ps.exc_name,ps.exc_info,   ps.api_http_response_code,   ps.fileok,ps.filename,ps.nrows_loaded,ps.nrows_inserts,ps.nrows_updates)
+        'INSERT INTO ' +info_table+ ' (ts,total_time,total_status,   exc_inphase,exc_name,exc_info,   api_http_response_code,   fileok,filename,nrows_loaded,nrows_inserts,nrows_updates,nrows_quarantine) VALUES (%s,%s,%s,   %s,%s,%s,   %s,   %s,%s,%s,%s,%s,%s)',
+        (ps.tstart,ps.total_time,ps.total_status,   ps.exc_inphase,ps.exc_name,ps.exc_info,   ps.api_http_response_code,   ps.fileok,ps.filename,ps.nrows_loaded,ps.nrows_inserts,ps.nrows_updates,ps.nrows_quarantine)
     )
 
 #####
@@ -274,7 +281,7 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
         data_add_hashes(cur, stg_table_hashed, stg_table)
         data_dedupl(cur, stg_table_dedupl, stg_table_hashed)
         data_check_rules(cur, stg_table_dedupl) # adds column with "OK flag" to the table
-        nrows_inserts,nrows_updates = data_merge(cur, data_table=settings.datatable, stg_table=stg_table_dedupl)
+        nrows_inserts,nrows_updates,nrows_quarantine = data_merge(cur, data_table=settings.datatable, stg_table=stg_table_dedupl)
 
         procstats = ProcStats(
                 tstart=tprocstart,
@@ -285,7 +292,8 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
                 fileok = True,
                 nrows_loaded = nrows_loaded,
                 nrows_inserts = nrows_inserts,
-                nrows_updates = nrows_updates
+                nrows_updates = nrows_updates,
+                nrows_quarantine = nrows_quarantine
         )
         store_status_info(cur, ps=procstats, info_table=settings.statstable)
 

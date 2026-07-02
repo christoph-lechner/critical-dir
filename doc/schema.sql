@@ -38,5 +38,6 @@ CREATE TABLE criticalmaps_stats_dev(
 	filename TEXT,
 	nrows_loaded INT,
 	nrows_inserts INT,
-	nrows_updates INT
+	nrows_updates INT,
+	nrows_quarantine INT
 );

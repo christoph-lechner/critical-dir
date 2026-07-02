@@ -75,13 +75,6 @@ datacol_ddl = \
     timestamp INT
 """
 def prepare_stg_table(cur, stg_table):
-    #cur.execute(
-    #    f"""
-    #    CREATE TEMPORARY TABLE {stg_table} (
-    #        {datacol_ddl}
-    #    );
-    #    """
-    #)
     cur.execute(
         f"""
         CREATE TEMPORARY TABLE {stg_table} (
@@ -171,6 +164,9 @@ def sighandler_term(signum, frame):
 #####
 
 def download_worker(*, f_heartbeat: Callable=None, api_url=None):
+    """
+    Returns True when everything was OK.
+    """
     settings = get_settings()
 
     def get_fn(*, fn_extension:str='json'):
@@ -202,7 +198,7 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
     except Exception as e:
         print('*** Could not establish DB connection ***')
         put_info_file(traceback.format_exc(), dupl_to_stdout=True)
-        return
+        return False
 
     try:
         # TODO: add timeouts here
@@ -241,7 +237,7 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
         # Note: There must not have been any SQL write access -- except storing these infos
         store_status_info(cur, ps=procstats, info_table=settings.statstable)
         conn.commit()
-        return
+        return False
 
     # DB operations are in second try/catch block to make the program more robust (for instance if a single operation fails for whatever reason)
     # TODO: add provisions for DB connection going down.
@@ -261,7 +257,7 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
             nrows_loaded+=1
             cur.execute(
                 'INSERT INTO ' +stg_table+ ' (deviceid,latitude,longitude,timestamp) VALUES (%s,%s,%s,%s)',
-                (d['device'], d['latitude'], d['longitude'], d['timestamp'])
+                (d.device, d.latitude, d.longitude, d.timestamp)
             )
 
         data_add_hashes(cur, stg_table_hashed, stg_table)
@@ -302,7 +298,11 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
         conn.rollback()
         store_status_info(cur, ps=procstats, info_table=settings.statstable)
         conn.commit()
-        return
+        return False
+
+    return True
+
+
 
 def t_download_thread(*,stop_event, f_heartbeat: Callable=None, test_single_request=False, override_api_url=None):
     def ceil_min(dt):

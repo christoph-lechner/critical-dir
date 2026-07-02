@@ -1,8 +1,9 @@
 import pytest
 from unittest.mock import Mock
+from pathlib import Path
+from pydantic import ValidationError
 from critical_dir.cmaps_util import load_cmap_jsonfile
 from critical_dir.cmaps_util import BadJSONDataFile
-from pathlib import Path
 
 def h_getpath(fn:str) -> Path:
     # get the path where this test script is located
@@ -14,7 +15,6 @@ def test_interface():
     """
     Basic interface checks
     """
-
     # we expect the function to return a list
     r = load_cmap_jsonfile( h_getpath('ok1.json') )
     assert isinstance(r, list)
@@ -37,10 +37,10 @@ def test_fileload_check_data():
     """
     data = load_cmap_jsonfile( h_getpath('ok1.json') )
     q = data[1]
-    assert q['device']=='28ef'
-    assert q['latitude']==53.123456
-    assert q['longitude']==10.234567
-    assert q['timestamp']==1782733734
+    assert q.device=='28ef'
+    assert q.latitude==53.123456
+    assert q.longitude==10.234567
+    assert q.timestamp==1782733734
 
 def test_cb_spatialfilter():
     """
@@ -81,7 +81,7 @@ def test_fileload_missing_fields():
     Note: We don't run tests with files having extra fields!
     """
     for idtest in range(1,5):
-        with pytest.raises(BadJSONDataFile):
+        with pytest.raises( (BadJSONDataFile,ValidationError) ):
             data = load_cmap_jsonfile( h_getpath(f'bad-missing-field{idtest}.json') )
 
 def test_fileload_bad_latlng():

@@ -66,7 +66,7 @@ if args.status_port:
     # import here: break early when there are missing dependencies
     from critical_dir.healthcheck import Healthcheck
 
-# data schema, without _h field (to be added as part of loading process), without ts_entry_creating
+# data schema, without fields that will be added during the loading process: _h, id_run, and ts_entry_creating
 datacol_ddl = \
 """
     deviceid TEXT,
@@ -116,7 +116,7 @@ def data_dedupl(cur, stg_dest, stg_src):
     )
     return cur.rowcount
 
-def data_check_rules(cur, stg):
+def data_check_rules(*, cur, stg):
     # add new column with OK flag (initially, before testing the conditions all entries are 'ok')
     cur.execute(f'ALTER TABLE {stg} ADD COLUMN flag_ok INT;')
     cur.execute(f'UPDATE {stg} SET flag_ok=1;')
@@ -127,6 +127,12 @@ def data_check_rules(cur, stg):
     cur.execute(f'UPDATE {stg} SET flag_ok=0 WHERE ABS(longitude)>180;')
     # TODO: add time filter rejecting too old entries
 
+def data_add_id_run(*, cur, stg, id_run):
+    # add id_run column
+    # (without foreign key constraint, the following MERGE operation
+    # inserts data in table with foreign key contraint active)
+    cur.execute(f'ALTER TABLE {stg} ADD COLUMN id_run BIGINT;')
+    cur.execute(f'UPDATE {stg} SET id_run=%s;', (id_run,))
 
 def data_merge(cur, *, data_table, stg_table):
     # Note: On match: updating data values since there could be changes to the data at a later time
@@ -141,9 +147,9 @@ def data_merge(cur, *, data_table, stg_table):
             ON
                 dst._h=src._h
             WHEN MATCHED THEN
-                UPDATE SET deviceid=src.deviceid, latitude=src.latitude, longitude=src.longitude, timestamp=src.timestamp
+                UPDATE SET id_run=src.id_run,deviceid=src.deviceid, latitude=src.latitude, longitude=src.longitude, timestamp=src.timestamp
             WHEN NOT MATCHED THEN
-                INSERT VALUES (_h,deviceid,latitude,longitude,timestamp)
+                INSERT VALUES (_h,id_run,deviceid,latitude,longitude,timestamp)
             RETURNING
                 -- merge_action() is new in PostgreSQL v18
                 dst._h, merge_action() AS action
@@ -296,7 +302,8 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
 
         data_add_hashes(cur, stg_table_hashed, stg_table)
         data_dedupl(cur, stg_table_dedupl, stg_table_hashed)
-        data_check_rules(cur, stg_table_dedupl) # adds column with "OK flag" to the table
+        data_check_rules(cur=cur, stg=stg_table_dedupl) # adds column with "OK flag" to the table
+        data_add_id_run(cur=cur, stg=stg_table_dedupl, id_run=id_run)
         nrows_inserts,nrows_updates,nrows_quarantine = data_merge(cur, data_table=settings.datatable, stg_table=stg_table_dedupl)
 
         procstats = ProcStats(

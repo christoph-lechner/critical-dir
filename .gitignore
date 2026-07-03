@@ -1,4 +1,9 @@
 # .env files may contain sensitive infos, such as credentials
 **/.env
 
+# ignore auto-generated .sql schemas
+doc/schema.sql
+tests/docker/testdata-ing_pg/100-schema-autogen.sql
+tests/docker/testdata_pg/010-schema.sql
+
 **/__pycache__/

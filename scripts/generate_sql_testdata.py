@@ -6,6 +6,11 @@ populated with test data. To be consistent, the test data generator
 also used when verifying the clustering algorithms is used.
 """
 
+"""
+Note that as of early July 2026, the run id column allows NULL values -> this is used here.
+Only when a value is provided, the FOREIGN KEY constraint is enforced.
+"""
+
 from critical_dir.criticaldir_core import DataLoaderTestData
 
 def main():

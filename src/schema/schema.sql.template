@@ -1,5 +1,5 @@
-
-
+{### Template for generating SQL schema definitions ###}
+{### Uses jinja2                                    ###}
 -------------------------------------------------------------
 -- Generated from template using jinja.                    --
 --                                                         --
@@ -9,7 +9,7 @@
 
 -- NOTE: if you change the definition of this table, be sure to update
 -- the data ingestion script
-CREATE TABLE criticalmaps_stats(
+CREATE TABLE criticalmaps_stats{{ id_project }}(
 	id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
 
 	ts TIMESTAMP WITH TIME ZONE,
@@ -31,16 +31,13 @@ CREATE TABLE criticalmaps_stats(
 	nrows_quarantine INT
 );
 
-
-
-
-
+{% macro def_table(name_extras) %}
 -- NOTE: if you change the definition of this table, be sure to update
 -- the data ingestion script
-CREATE TABLE criticalmaps_data (
+CREATE TABLE criticalmaps_data{{ name_extras }}{{ id_project }} (
     _h TEXT,
     -- NOTE: there is no "NOT NULL" in the following row definition, so "NULL" satisfies the constraint
-    id_run BIGINT REFERENCES criticalmaps_stats(id),
+    id_run BIGINT REFERENCES criticalmaps_stats{{ id_project }}(id),
 
     deviceid TEXT,
     latitude FLOAT,
@@ -49,29 +46,17 @@ CREATE TABLE criticalmaps_data (
     ts_entry_creation TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE (_h)
 );
+{% endmacro %}
 
+{# data table and quarantine table have identical defintion #}
+{{ def_table("") }}
+{{ def_table("_quarantine") }}
 
--- NOTE: if you change the definition of this table, be sure to update
--- the data ingestion script
-CREATE TABLE criticalmaps_data_quarantine (
-    _h TEXT,
-    -- NOTE: there is no "NOT NULL" in the following row definition, so "NULL" satisfies the constraint
-    id_run BIGINT REFERENCES criticalmaps_stats(id),
-
-    deviceid TEXT,
-    latitude FLOAT,
-    longitude FLOAT,
-    timestamp INT,
-    ts_entry_creation TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    UNIQUE (_h)
-);
-
-
-
+{% if create_indices %}
 -- index supporting for instance searches for a specific device ID (and additional temporal filtering)
-CREATE INDEX ON criticalmaps_data(deviceid,timestamp);
+CREATE INDEX ON criticalmaps_data{{ id_project }}(deviceid,timestamp);
 -- index supporting geographical queries such as "WHERE latitude BETWEEN 53.35 AND 53.75 AND longitude BETWEEN 9.7 AND 10.35" (bounding box of city of Hamburg)
-CREATE INDEX ON criticalmaps_data(latitude,longitude);
+CREATE INDEX ON criticalmaps_data{{ id_project }}(latitude,longitude);
 -- index for queries such as "SELECT MAX(timestamp) AS timestamp_mostrecent FROM criticalmaps_data"
-CREATE INDEX ON criticalmaps_data(timestamp);
-
+CREATE INDEX ON criticalmaps_data{{ id_project }}(timestamp);
+{% endif %}

@@ -17,6 +17,7 @@ dependencies = [
     "psycopg[binary,pool]",
     "redis",
     "pydantic-settings",
+    "jinja2",
 ]
 
 [project.scripts]

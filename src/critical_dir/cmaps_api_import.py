@@ -170,7 +170,6 @@ def data_route_and_merge(cur, *, data_table, quarantine_table, stg_table):
     res_m   = execute_merge(dst_table=data_table,       dataok=True)
     res_m_q = execute_merge(dst_table=quarantine_table, dataok=False)
     n_q = res_m_q['n_inserts']+res_m_q['n_updates']
-    abcdefgh
 
     """
     # Count number of rows that do not meet requirements

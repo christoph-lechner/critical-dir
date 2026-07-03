@@ -3,6 +3,12 @@ from critical_dir.settings import get_settings
 from psycopg.rows import dict_row
 import os
 
+def helper_get_nrows(cur, tbl:str) -> int:
+    cur.execute(f'SELECT COUNT(*) AS c FROM {tbl};')
+    res = cur.fetchone()
+    assert res is not None
+    return res['c']
+
 def test_analyze_ingestion(capsys):
     """
     First tests for ingestion script.
@@ -19,12 +25,12 @@ def test_analyze_ingestion(capsys):
     cur = conn.cursor(row_factory=dict_row)
 
     settings = get_settings()
+    
+    # test number of rows in quarantine table
+    assert 0 == helper_get_nrows(cur, settings.quarantinetable)
 
-    ### get number of rows in data table
-    cur.execute(f'SELECT COUNT(*) AS c FROM {settings.datatable};')
-    res = cur.fetchone()
-    assert res is not None
-    datatable_nrows = res['c']
+    # get number of rows in data table
+    datatable_nrows = helper_get_nrows(cur, settings.datatable)
 
     ### get number of rows from stats table (and test that there were only INSERTs)
     cur.execute(f"SELECT nrows_inserts,nrows_updates,nrows_quarantine FROM {settings.statstable} WHERE total_status='1';")
@@ -49,12 +55,10 @@ def test_analyze_idempotence(capsys):
     # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
     cur = conn.cursor(row_factory=dict_row)
 
-    ### get number of rows in data table
+    ### get number of rows in quarantine and data table
     # FIXME: hard-coded table name
-    cur.execute(f'SELECT COUNT(*) AS c FROM criticalmaps_data_test_idempotency;')
-    res = cur.fetchone()
-    assert res is not None
-    datatable_nrows = res['c']
+    assert 0 == helper_get_nrows(cur, 'criticalmaps_data_quarantine_test_idempotency')
+    datatable_nrows = helper_get_nrows(cur, 'criticalmaps_data_test_idempotency')
 
     # test file describes 8 devices, so we expect 8 rows in DB
     nrows_expected = 8
@@ -95,10 +99,9 @@ def test_analyze_badlatlng(capsys):
 
     # FIXME: hard-coded table names
     for tblname in ['criticalmaps_data_test_badlat','criticalmaps_data_test_badlng']:
-        cur.execute(f'SELECT COUNT(*) AS c FROM {tblname};')
-        res = cur.fetchone()
-        assert res is not None
-        assert res['c'] == nrows_in_file-1
+        assert nrows_in_file-1 == helper_get_nrows(cur, tblname)
+    for tblname in ['criticalmaps_data_quarantine_test_badlat','criticalmaps_data_quarantine_test_badlng']:
+        assert 1 == helper_get_nrows(cur, tblname)
 
 
     # FIXME: hard-coded table names

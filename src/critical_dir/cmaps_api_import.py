@@ -4,6 +4,8 @@ import time
 import datetime
 import signal
 import threading
+import queue
+import sys
 import argparse
 from threading import Event
 from pathlib import Path
@@ -40,6 +42,7 @@ class ProcStats:
     nrows_loaded: int = None
     nrows_inserts: int = None
     nrows_updates: int = None
+    nrows_quarantine: int = None
 
 """
 Configuration of data output directory via environment variable
@@ -65,8 +68,7 @@ if args.status_port:
     # import here: break early when there are missing dependencies
     from critical_dir.healthcheck import Healthcheck
 
-# based on loader_radverkehr.py
-# data schema, without _h field (to be added as part of loading process), without ts_entry_creating
+# data schema, without fields that will be added during the loading process: _h, id_run, and ts_entry_creating
 datacol_ddl = \
 """
     deviceid TEXT,
@@ -75,13 +77,6 @@ datacol_ddl = \
     timestamp INT
 """
 def prepare_stg_table(cur, stg_table):
-    #cur.execute(
-    #    f"""
-    #    CREATE TEMPORARY TABLE {stg_table} (
-    #        {datacol_ddl}
-    #    );
-    #    """
-    #)
     cur.execute(
         f"""
         CREATE TEMPORARY TABLE {stg_table} (
@@ -123,40 +118,86 @@ def data_dedupl(cur, stg_dest, stg_src):
     )
     return cur.rowcount
 
+def data_check_rules(*, cur, stg):
+    # add new column with OK flag (initially, before testing the conditions all entries are 'ok')
+    cur.execute(f'ALTER TABLE {stg} ADD COLUMN flag_ok INT;')
+    cur.execute(f'UPDATE {stg} SET flag_ok=1;')
 
-def data_merge(cur, *, data_table, stg_table):
-    # Note: On match: updating data values since there could be changes to the data at a later time
-    cur.execute(
-        f"""
-        WITH q AS(
-            MERGE
-            INTO
-                {data_table} AS dst
-            USING
-                {stg_table} AS src
-            ON
-                dst._h=src._h
-            WHEN MATCHED THEN
-                UPDATE SET deviceid=src.deviceid, latitude=src.latitude, longitude=src.longitude, timestamp=src.timestamp
-            WHEN NOT MATCHED THEN
-                INSERT VALUES (_h,deviceid,latitude,longitude,timestamp)
-            RETURNING
-                -- merge_action() is new in PostgreSQL v18
-                dst._h, merge_action() AS action
+    # Rule checks
+    # Note: If they fail, these checks zero flag_ok. You must NEVER set the flag to 1!
+    cur.execute(f'UPDATE {stg} SET flag_ok=0 WHERE ABS(latitude)>90;')
+    cur.execute(f'UPDATE {stg} SET flag_ok=0 WHERE ABS(longitude)>180;')
+    # TODO: add time filter rejecting too old entries
+
+def data_add_id_run(*, cur, stg, id_run):
+    # add id_run column
+    # (without foreign key constraint, the following MERGE operation
+    # inserts data in table with foreign key contraint active)
+    cur.execute(f'ALTER TABLE {stg} ADD COLUMN id_run BIGINT;')
+    cur.execute(f'UPDATE {stg} SET id_run=%s;', (id_run,))
+
+def data_route_and_merge(cur, *, data_table, quarantine_table, stg_table):
+    def execute_merge(*, dst_table, dataok=True):
+        # Note: On match: updating data values since there could be changes to the data at a later time
+        cur.execute(
+            f"""
+            WITH q AS(
+                MERGE
+                INTO
+                    {dst_table} AS dst
+                USING
+                    (SELECT * FROM {stg_table} WHERE flag_ok=%s) src
+                ON
+                    dst._h=src._h
+                WHEN MATCHED THEN
+                    UPDATE SET id_run=src.id_run,deviceid=src.deviceid, latitude=src.latitude, longitude=src.longitude, timestamp=src.timestamp
+                WHEN NOT MATCHED THEN
+                    INSERT VALUES (_h,id_run,deviceid,latitude,longitude,timestamp)
+                RETURNING
+                    -- merge_action() is new in PostgreSQL v18
+                    dst._h, merge_action() AS action
+            )
+            SELECT
+                COUNT(*) FILTER (WHERE action='INSERT') AS n_inserts,
+                COUNT(*) FILTER (WHERE action='UPDATE') AS n_updates
+            FROM q;
+            """,
+            (int(dataok),) # explicit type casting to int avoids error "psycopg.errors.UndefinedFunction: operator does not exist: integer = boolean"
         )
-        SELECT
-        	COUNT(*) FILTER (WHERE action='INSERT') AS n_inserts,
-        	COUNT(*) FILTER (WHERE action='UPDATE') AS n_updates
-        FROM q;
-        """
+        res_m = cur.fetchone()
+        return res_m
+
+    res_m   = execute_merge(dst_table=data_table,       dataok=True)
+    res_m_q = execute_merge(dst_table=quarantine_table, dataok=False)
+    n_q = res_m_q['n_inserts']+res_m_q['n_updates']
+
+    """
+    # Count number of rows that do not meet requirements
+    # -> TODO: put them into quarantine
+    cur.execute(f'SELECT COUNT(*) AS c FROM {stg_table} WHERE flag_ok=0;')
+    res_c = cur.fetchone()
+
+    return res_m['n_inserts'],res_m['n_updates'],res_c['c']
+    """
+    return res_m['n_inserts'],res_m['n_updates'],n_q
+
+
+#####
+
+def status_info_generate_id(*, cur, info_table='criticalmaps_stats_dev'):
+    cur.execute(
+        f'INSERT INTO {info_table} (ts) VALUES (NULL) RETURNING id;'
     )
     res = cur.fetchone()
-    return res['n_inserts'],res['n_updates']
+    return res['id']
 
-def store_status_info(cur, ps: ProcStats, info_table='criticalmaps_stats_dev'):
+def store_status_info(*, cur, id_run:int=None, ps: ProcStats, info_table='criticalmaps_stats_dev'):
+    if not id_run:
+        id_run = status_info_generate_id(cur=cur, info_table=info_table)
+
     cur.execute(
-        'INSERT INTO ' +info_table+ ' (ts,total_time,total_status,   exc_inphase,exc_name,exc_info,   api_http_response_code,   fileok,filename,nrows_loaded,nrows_inserts,nrows_updates) VALUES (%s,%s,%s,   %s,%s,%s,   %s,   %s,%s,%s,%s,%s)',
-        (ps.tstart,ps.total_time,ps.total_status,   ps.exc_inphase,ps.exc_name,ps.exc_info,   ps.api_http_response_code,   ps.fileok,ps.filename,ps.nrows_loaded,ps.nrows_inserts,ps.nrows_updates)
+        'UPDATE ' +info_table+ ' SET ts=%s,total_time=%s,total_status=%s,   exc_inphase=%s,exc_name=%s,exc_info=%s,   api_http_response_code=%s,   fileok=%s,filename=%s,nrows_loaded=%s,nrows_inserts=%s,nrows_updates=%s,nrows_quarantine=%s WHERE id=%s',
+        (ps.tstart,ps.total_time,ps.total_status,   ps.exc_inphase,ps.exc_name,ps.exc_info,   ps.api_http_response_code,   ps.fileok,ps.filename,ps.nrows_loaded,ps.nrows_inserts,ps.nrows_updates,ps.nrows_quarantine,   id_run)
     )
 
 #####
@@ -171,6 +212,9 @@ def sighandler_term(signum, frame):
 #####
 
 def download_worker(*, f_heartbeat: Callable=None, api_url=None):
+    """
+    Returns True when everything was OK.
+    """
     settings = get_settings()
 
     def get_fn(*, fn_extension:str='json'):
@@ -202,7 +246,7 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
     except Exception as e:
         print('*** Could not establish DB connection ***')
         put_info_file(traceback.format_exc(), dupl_to_stdout=True)
-        return
+        return False
 
     try:
         # TODO: add timeouts here
@@ -239,12 +283,12 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
         # print(procstats)
 
         # Note: There must not have been any SQL write access -- except storing these infos
-        store_status_info(cur, ps=procstats, info_table=settings.statstable)
+        store_status_info(cur=cur, ps=procstats, info_table=settings.statstable)
         conn.commit()
-        return
+        return False
 
-    # DB operations are in second try/catch block to make the program more robust (for instance if a single operation fails for whatever reason)
-    # TODO: add provisions for DB connection going down.
+    # DB operations are in third try/catch block to make the program more robust
+    # (for instance if a single operation fails for whatever reason)
     try:
         # create unique names for data staging steps
         str_t0 = tprocstart.strftime('%Y%m%dT%H%M%S')
@@ -252,7 +296,11 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
         stg_table_hashed = stg_table + '_h'
         stg_table_dedupl = stg_table + '_d'
 
-        data,_ = load_cmap_jsonfile(fn_out)
+        data = load_cmap_jsonfile(fn_out)
+
+        # Obtain ID for this ingestion run, could be used to earmark rows in data tables etc.
+        # (there was no need to get it earlier, because only now we begin to actually insert data)
+        id_run = status_info_generate_id(cur=cur, info_table=settings.statstable)
 
         # prepare and populate staging table
         nrows_loaded=0
@@ -261,12 +309,19 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
             nrows_loaded+=1
             cur.execute(
                 'INSERT INTO ' +stg_table+ ' (deviceid,latitude,longitude,timestamp) VALUES (%s,%s,%s,%s)',
-                (d['device'], d['latitude'], d['longitude'], d['timestamp'])
+                (d.device, d.latitude, d.longitude, d.timestamp)
             )
 
         data_add_hashes(cur, stg_table_hashed, stg_table)
         data_dedupl(cur, stg_table_dedupl, stg_table_hashed)
-        nrows_inserts,nrows_updates = data_merge(cur, data_table=settings.datatable, stg_table=stg_table_dedupl)
+        data_check_rules(cur=cur, stg=stg_table_dedupl) # adds column with "OK flag" to the table
+        data_add_id_run(cur=cur, stg=stg_table_dedupl, id_run=id_run)
+        nrows_inserts,nrows_updates,nrows_quarantine = data_route_and_merge(
+                cur,
+                data_table=settings.datatable,
+                quarantine_table=settings.quarantinetable,
+                stg_table=stg_table_dedupl
+        )
 
         procstats = ProcStats(
                 tstart=tprocstart,
@@ -277,9 +332,10 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
                 fileok = True,
                 nrows_loaded = nrows_loaded,
                 nrows_inserts = nrows_inserts,
-                nrows_updates = nrows_updates
+                nrows_updates = nrows_updates,
+                nrows_quarantine = nrows_quarantine
         )
-        store_status_info(cur, ps=procstats, info_table=settings.statstable)
+        store_status_info(cur=cur, id_run=id_run, ps=procstats, info_table=settings.statstable)
 
         conn.commit()
     except Exception as e:
@@ -300,11 +356,15 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
         # Here, we don't know which part of the DB operations failed
         # -> rollback to be one the safe side
         conn.rollback()
-        store_status_info(cur, ps=procstats, info_table=settings.statstable)
+        store_status_info(cur=cur, id_run=id_run, ps=procstats, info_table=settings.statstable)
         conn.commit()
-        return
+        return False
 
-def t_download_thread(*,stop_event, f_heartbeat: Callable=None, test_single_request=False, override_api_url=None):
+    return True
+
+
+
+def t_download_thread(*, stop_event, q_retcode: queue.Queue=None, f_heartbeat: Callable=None, test_single_request=False, override_api_url=None):
     def ceil_min(dt):
         return dt.replace(second=0, microsecond=0) + datetime.timedelta(minutes=1)
     def wait_until(dt):
@@ -339,7 +399,9 @@ def t_download_thread(*,stop_event, f_heartbeat: Callable=None, test_single_requ
 
     if test_single_request:
         # special case for automatic testing
-        download_worker(**kwargs)
+        rc = download_worker(**kwargs)
+        if q_retcode:
+            q_retcode.put(rc)
         return
 
     # schedule first request to happen at the start of the next minute
@@ -352,8 +414,12 @@ def t_download_thread(*,stop_event, f_heartbeat: Callable=None, test_single_requ
             print('got SIGTERM/SIGINT -> stopping')
             break
 
+        # We don't process the status code of the individual operation,
+        # instead we try again regardless of good/bad status
         download_worker(**kwargs)
 
+    if q_retcode:
+        q_retcode.put(True)
 
 
 def mainloop(*, status):
@@ -373,9 +439,13 @@ def mainloop(*, status):
         print('Running in a TEST MODE: only sending a single API request')
         t_kw['test_single_request'] = True
 
+    q_rc = queue.Queue()
+    t_kw['q_retcode'] = q_rc
+
     t_dl = threading.Thread(target=t_download_thread, kwargs=t_kw)
     t_dl.start()
 
+    """
     if not testmode:
         # FIXME 2026-06-29: it appears this loop is not needed (anymore) -> think about it
         while True:
@@ -385,12 +455,19 @@ def mainloop(*, status):
 
             # short sleeps to avoid busy waiting
             time.sleep(1)
+    """
 
     t_dl.join()
     if status['healthcheck']:
         status['healthcheck'].stop_server()
 
-    return
+    try:
+        status = q_rc.get(timeout=60)
+    except queue.Empty:
+        # timeout -> consider as bad status code
+        status = False
+
+    return status
 
 def main():
     status={}
@@ -408,7 +485,10 @@ def main():
     signal.signal(signal.SIGTERM, sighandler_term)
     signal.signal(signal.SIGINT,  sighandler_term)
 
-    mainloop(status=status)
+    status = mainloop(status=status)
+    if status:
+        sys.exit(0)
+    sys.exit(1)
 
 if __name__=='__main__':
     main()

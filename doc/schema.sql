@@ -22,7 +22,9 @@ CREATE INDEX ON criticalmaps_data(timestamp);
 -- NOTE: if you change the definition of this table, be sure to update
 -- * the data ingestion script
 -- * the schema definition used for automatic testing of the ingestion script
-CREATE TABLE criticalmaps_stats_dev(
+CREATE TABLE criticalmaps_stats(
+	id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+
 	ts TIMESTAMP WITH TIME ZONE,
 	total_time FLOAT,
 	total_status BOOLEAN,

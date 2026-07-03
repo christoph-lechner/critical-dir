@@ -16,6 +16,8 @@ CREATE TABLE criticalmaps_data_test(
 -- NOTE: if you change the definition of this table, be sure to update the data ingestion script
 -- NOTE: By purpose this table has different name than tables used for operation
 CREATE TABLE criticalmaps_stats_test(
+	id BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+
 	ts TIMESTAMP WITH TIME ZONE,
 	total_time FLOAT,
 	total_status BOOLEAN,

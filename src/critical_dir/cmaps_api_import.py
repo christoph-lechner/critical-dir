@@ -66,7 +66,6 @@ if args.status_port:
     # import here: break early when there are missing dependencies
     from critical_dir.healthcheck import Healthcheck
 
-# based on loader_radverkehr.py
 # data schema, without _h field (to be added as part of loading process), without ts_entry_creating
 datacol_ddl = \
 """
@@ -123,7 +122,7 @@ def data_check_rules(cur, stg):
     cur.execute(f'UPDATE {stg} SET flag_ok=1;')
 
     # Rule checks
-    # Note: These checks must only zero flag_ok, NEVER set the flag to 1!
+    # Note: If they fail, these checks zero flag_ok. You must NEVER set the flag to 1!
     cur.execute(f'UPDATE {stg} SET flag_ok=0 WHERE ABS(latitude)>90;')
     cur.execute(f'UPDATE {stg} SET flag_ok=0 WHERE ABS(longitude)>180;')
     # TODO: add time filter rejecting too old entries
@@ -164,10 +163,23 @@ def data_merge(cur, *, data_table, stg_table):
 
     return res_m['n_inserts'],res_m['n_updates'],res_c['c']
 
-def store_status_info(cur, ps: ProcStats, info_table='criticalmaps_stats_dev'):
+
+#####
+
+def status_info_generate_id(*, cur, info_table='criticalmaps_stats_dev'):
     cur.execute(
-        'INSERT INTO ' +info_table+ ' (ts,total_time,total_status,   exc_inphase,exc_name,exc_info,   api_http_response_code,   fileok,filename,nrows_loaded,nrows_inserts,nrows_updates,nrows_quarantine) VALUES (%s,%s,%s,   %s,%s,%s,   %s,   %s,%s,%s,%s,%s,%s)',
-        (ps.tstart,ps.total_time,ps.total_status,   ps.exc_inphase,ps.exc_name,ps.exc_info,   ps.api_http_response_code,   ps.fileok,ps.filename,ps.nrows_loaded,ps.nrows_inserts,ps.nrows_updates,ps.nrows_quarantine)
+        f'INSERT INTO {info_table} (ts) VALUES (NULL) RETURNING id;'
+    )
+    res = cur.fetchone()
+    return res['id']
+
+def store_status_info(*, cur, id_run:int=None, ps: ProcStats, info_table='criticalmaps_stats_dev'):
+    if not id_run:
+        id_run = status_info_generate_id(cur=cur, info_table=info_table)
+
+    cur.execute(
+        'UPDATE ' +info_table+ ' SET ts=%s,total_time=%s,total_status=%s,   exc_inphase=%s,exc_name=%s,exc_info=%s,   api_http_response_code=%s,   fileok=%s,filename=%s,nrows_loaded=%s,nrows_inserts=%s,nrows_updates=%s,nrows_quarantine=%s WHERE id=%s',
+        (ps.tstart,ps.total_time,ps.total_status,   ps.exc_inphase,ps.exc_name,ps.exc_info,   ps.api_http_response_code,   ps.fileok,ps.filename,ps.nrows_loaded,ps.nrows_inserts,ps.nrows_updates,ps.nrows_quarantine,   id_run)
     )
 
 #####
@@ -253,7 +265,7 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
         # print(procstats)
 
         # Note: There must not have been any SQL write access -- except storing these infos
-        store_status_info(cur, ps=procstats, info_table=settings.statstable)
+        store_status_info(cur=cur, ps=procstats, info_table=settings.statstable)
         conn.commit()
         return False
 
@@ -267,6 +279,10 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
         stg_table_dedupl = stg_table + '_d'
 
         data = load_cmap_jsonfile(fn_out)
+
+        # Obtain ID for this ingestion run, could be used to earmark rows in data tables etc.
+        # (there was no need to get it earlier, because only now we begin to actually insert data)
+        id_run = status_info_generate_id(cur=cur, info_table=settings.statstable)
 
         # prepare and populate staging table
         nrows_loaded=0
@@ -295,7 +311,7 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
                 nrows_updates = nrows_updates,
                 nrows_quarantine = nrows_quarantine
         )
-        store_status_info(cur, ps=procstats, info_table=settings.statstable)
+        store_status_info(cur=cur, id_run=id_run, ps=procstats, info_table=settings.statstable)
 
         conn.commit()
     except Exception as e:
@@ -316,7 +332,7 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
         # Here, we don't know which part of the DB operations failed
         # -> rollback to be one the safe side
         conn.rollback()
-        store_status_info(cur, ps=procstats, info_table=settings.statstable)
+        store_status_info(cur=cur, id_run=id_run, ps=procstats, info_table=settings.statstable)
         conn.commit()
         return False
 

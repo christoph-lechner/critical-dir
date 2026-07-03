@@ -134,40 +134,50 @@ def data_add_id_run(*, cur, stg, id_run):
     cur.execute(f'ALTER TABLE {stg} ADD COLUMN id_run BIGINT;')
     cur.execute(f'UPDATE {stg} SET id_run=%s;', (id_run,))
 
-def data_merge(cur, *, data_table, stg_table):
-    # Note: On match: updating data values since there could be changes to the data at a later time
-    cur.execute(
-        f"""
-        WITH q AS(
-            MERGE
-            INTO
-                {data_table} AS dst
-            USING
-                (SELECT * FROM {stg_table} WHERE flag_ok=1) src
-            ON
-                dst._h=src._h
-            WHEN MATCHED THEN
-                UPDATE SET id_run=src.id_run,deviceid=src.deviceid, latitude=src.latitude, longitude=src.longitude, timestamp=src.timestamp
-            WHEN NOT MATCHED THEN
-                INSERT VALUES (_h,id_run,deviceid,latitude,longitude,timestamp)
-            RETURNING
-                -- merge_action() is new in PostgreSQL v18
-                dst._h, merge_action() AS action
+def data_route_and_merge(cur, *, data_table, quarantine_table, stg_table):
+    def execute_merge(*, dst_table, dataok=True):
+        # Note: On match: updating data values since there could be changes to the data at a later time
+        cur.execute(
+            f"""
+            WITH q AS(
+                MERGE
+                INTO
+                    {dst_table} AS dst
+                USING
+                    (SELECT * FROM {stg_table} WHERE flag_ok=%s) src
+                ON
+                    dst._h=src._h
+                WHEN MATCHED THEN
+                    UPDATE SET id_run=src.id_run,deviceid=src.deviceid, latitude=src.latitude, longitude=src.longitude, timestamp=src.timestamp
+                WHEN NOT MATCHED THEN
+                    INSERT VALUES (_h,id_run,deviceid,latitude,longitude,timestamp)
+                RETURNING
+                    -- merge_action() is new in PostgreSQL v18
+                    dst._h, merge_action() AS action
+            )
+            SELECT
+                COUNT(*) FILTER (WHERE action='INSERT') AS n_inserts,
+                COUNT(*) FILTER (WHERE action='UPDATE') AS n_updates
+            FROM q;
+            """,
+            (int(dataok),) # explicit type casting to int avoids error "psycopg.errors.UndefinedFunction: operator does not exist: integer = boolean"
         )
-        SELECT
-        	COUNT(*) FILTER (WHERE action='INSERT') AS n_inserts,
-        	COUNT(*) FILTER (WHERE action='UPDATE') AS n_updates
-        FROM q;
-        """
-    )
-    res_m = cur.fetchone()
+        res_m = cur.fetchone()
+        return res_m
 
+    res_m   = execute_merge(dst_table=data_table,       dataok=True)
+    res_m_q = execute_merge(dst_table=quarantine_table, dataok=False)
+    n_q = res_m_q['n_inserts']+res_m_q['n_updates']
+
+    """
     # Count number of rows that do not meet requirements
     # -> TODO: put them into quarantine
     cur.execute(f'SELECT COUNT(*) AS c FROM {stg_table} WHERE flag_ok=0;')
     res_c = cur.fetchone()
 
     return res_m['n_inserts'],res_m['n_updates'],res_c['c']
+    """
+    return res_m['n_inserts'],res_m['n_updates'],n_q
 
 
 #####
@@ -304,7 +314,12 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
         data_dedupl(cur, stg_table_dedupl, stg_table_hashed)
         data_check_rules(cur=cur, stg=stg_table_dedupl) # adds column with "OK flag" to the table
         data_add_id_run(cur=cur, stg=stg_table_dedupl, id_run=id_run)
-        nrows_inserts,nrows_updates,nrows_quarantine = data_merge(cur, data_table=settings.datatable, stg_table=stg_table_dedupl)
+        nrows_inserts,nrows_updates,nrows_quarantine = data_route_and_merge(
+                cur,
+                data_table=settings.datatable,
+                quarantine_table=settings.quarantinetable,
+                stg_table=stg_table_dedupl
+        )
 
         procstats = ProcStats(
                 tstart=tprocstart,

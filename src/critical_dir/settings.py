@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     # no defaults for table names, forces user to assign them and ensures correct variable names in .env files
     datatable: str
+    quarantinetable: str
     statstable: str
 
     redis_host: str = 'localhost'

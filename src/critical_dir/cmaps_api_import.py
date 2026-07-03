@@ -4,6 +4,8 @@ import time
 import datetime
 import signal
 import threading
+import queue
+import sys
 import argparse
 from threading import Event
 from pathlib import Path
@@ -168,6 +170,7 @@ def data_route_and_merge(cur, *, data_table, quarantine_table, stg_table):
     res_m   = execute_merge(dst_table=data_table,       dataok=True)
     res_m_q = execute_merge(dst_table=quarantine_table, dataok=False)
     n_q = res_m_q['n_inserts']+res_m_q['n_updates']
+    abcdefgh
 
     """
     # Count number of rows that do not meet requirements
@@ -362,7 +365,7 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
 
 
 
-def t_download_thread(*,stop_event, f_heartbeat: Callable=None, test_single_request=False, override_api_url=None):
+def t_download_thread(*, stop_event, q_retcode: queue.Queue=None, f_heartbeat: Callable=None, test_single_request=False, override_api_url=None):
     def ceil_min(dt):
         return dt.replace(second=0, microsecond=0) + datetime.timedelta(minutes=1)
     def wait_until(dt):
@@ -397,7 +400,9 @@ def t_download_thread(*,stop_event, f_heartbeat: Callable=None, test_single_requ
 
     if test_single_request:
         # special case for automatic testing
-        download_worker(**kwargs)
+        rc = download_worker(**kwargs)
+        if q_retcode:
+            q_retcode.put(rc)
         return
 
     # schedule first request to happen at the start of the next minute
@@ -410,8 +415,12 @@ def t_download_thread(*,stop_event, f_heartbeat: Callable=None, test_single_requ
             print('got SIGTERM/SIGINT -> stopping')
             break
 
+        # We don't process the status code of the individual operation,
+        # instead we try again regardless of good/bad status
         download_worker(**kwargs)
 
+    if q_retcode:
+        q_retcode.put(True)
 
 
 def mainloop(*, status):
@@ -431,9 +440,13 @@ def mainloop(*, status):
         print('Running in a TEST MODE: only sending a single API request')
         t_kw['test_single_request'] = True
 
+    q_rc = queue.Queue()
+    t_kw['q_retcode'] = q_rc
+
     t_dl = threading.Thread(target=t_download_thread, kwargs=t_kw)
     t_dl.start()
 
+    """
     if not testmode:
         # FIXME 2026-06-29: it appears this loop is not needed (anymore) -> think about it
         while True:
@@ -443,12 +456,19 @@ def mainloop(*, status):
 
             # short sleeps to avoid busy waiting
             time.sleep(1)
+    """
 
     t_dl.join()
     if status['healthcheck']:
         status['healthcheck'].stop_server()
 
-    return
+    try:
+        status = q_rc.get(timeout=60)
+    except queue.Empty:
+        # timeout -> consider as bad status code
+        status = False
+
+    return status
 
 def main():
     status={}
@@ -466,7 +486,10 @@ def main():
     signal.signal(signal.SIGTERM, sighandler_term)
     signal.signal(signal.SIGINT,  sighandler_term)
 
-    mainloop(status=status)
+    status = mainloop(status=status)
+    if status:
+        sys.exit(0)
+    sys.exit(1)
 
 if __name__=='__main__':
     main()

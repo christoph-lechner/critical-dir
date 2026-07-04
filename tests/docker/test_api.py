@@ -76,3 +76,9 @@ def test_api_checks():
     doit('/health')
     doit('/health', method='head')
     # 2026-06-16: not checking: /location, /location_demo, /inspect -> considering to remove these
+
+def test_api_checks_t0():
+    apiurl = urljoin(get_api_baseurl(), '/set_t0')
+    r = requests.post(apiurl)
+    # in the request no credentials were sent -> check that server sent HTTP status 401
+    assert r.status_code==401

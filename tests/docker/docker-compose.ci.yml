@@ -33,6 +33,7 @@ services:
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
 
+  # Note: there is another service definition in this file, with identical settings except credentials for HTTP auth
   cdir_api_server:
     build:
       context: ../../
@@ -51,9 +52,42 @@ services:
       - CRITICAL_DIR_API_DOWNLOADER_JSON_OUTDIR=/app/not_used_for_test/
       # currently unlocks manipulation of some parameters via URL
       - CRITICAL_DIR_TEST_MODE=1
+      # here, HTTP credentials are left undefined
     # exposing port on host system -> needed for test development
     ports:
       - "8081:8081"
+    depends_on:
+      pgdatabase:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Clone of above service, with HTTP credentials defined -> login should work
+  # !ONLY FOR TESTS, we run two instances of the server sharing the same DB and redis server!
+  cdir_api_server_with_auth:
+    build:
+      context: ../../
+      dockerfile: Dockerfile.api
+    environment:
+      # Note: do not quote the DSN.
+      - CRITICAL_DIR_PG_DSN=postgres://testuser:testpwd@pgdatabase:5432/testdb
+      - CRITICAL_DIR_DATATABLE=criticalmaps_data_test
+      - CRITICAL_DIR_QUARANTINETABLE=criticalmaps_data_quarantine_test
+      # stats table is not relevant for API server, but parameters is needed as of 2026-06-29
+      - CRITICAL_DIR_STATSTABLE=criticalmaps_stats_test
+      - CRITICAL_DIR_REDIS_HOST=redis
+
+      # Remember: These paths to be specified as seen from inside the running Docker container.
+      - CRITICAL_DIR_IMG_DIR=/app/objs
+      - CRITICAL_DIR_API_DOWNLOADER_JSON_OUTDIR=/app/not_used_for_test/
+      # currently unlocks manipulation of some parameters via URL
+      - CRITICAL_DIR_TEST_MODE=1
+      #
+      - CRITICAL_DIR_HTTP_USERNAME=johndoe
+      - CRITICAL_DIR_HTTP_PASSWORD=pwd
+    # exposing port on host system -> needed for test development
+    ports:
+      - "8082:8081"
     depends_on:
       pgdatabase:
         condition: service_healthy
@@ -67,6 +101,7 @@ services:
       dockerfile: Dockerfile.api
     environment:
       - TEST_APIURL=http://cdir_api_server:8081/
+      - TEST_APIURL_AUTH=http://cdir_api_server_with_auth:8081/
     profiles:
       # specifying 'profiles' prevents this from launching when 'docker compose up -d' is issued
       - onlytest
@@ -79,6 +114,8 @@ services:
       pgdatabase:
         condition: service_healthy
       cdir_api_server:
+        condition: service_healthy
+      cdir_api_server_with_auth:
         condition: service_healthy
       redis:
         condition: service_healthy

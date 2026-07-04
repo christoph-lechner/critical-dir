@@ -40,10 +40,15 @@ def dbconn():
 
     ### tear down ###
     # for debugging (if you want to study the outcome), don't drop the schema
-    conn.execute(f'DROP SCHEMA {my_schema} CASCADE;')
+    if not os.getenv('TESTS_DO_NOT_DROP'):
+        conn.execute(f'DROP SCHEMA {my_schema} CASCADE;')
     conn.commit()
     conn.close()
 
+# to be completed ...
+def dbconn_populated(dbconn):
+    # prepare DB structure
+    yield dbconn
 
 def pytest_ignore_collect(collection_path, config):
     """

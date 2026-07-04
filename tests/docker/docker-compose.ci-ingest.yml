@@ -159,6 +159,32 @@ services:
       pgdatabase:
         condition: service_healthy
 
+  ### Test with bad URL ###
+  cdir_ing_badurl:
+    <<: *ing
+    environment:
+      <<: *ing-env
+      CRITICAL_DIR_DATATABLE: criticalmaps_data_test_badurl
+      CRITICAL_DIR_QUARANTINETABLE: criticalmaps_data_quarantine_test_badurl
+      CRITICAL_DIR_STATSTABLE: criticalmaps_stats_test_badurl
+    # Need to clear ENTRYPOINT given in Dockerfile
+    entrypoint: []
+    command:
+      - /bin/sh
+      - -c
+      # Two remarks:
+      # 1) The provided URL is broken BY PURPOSE, returning expired SSL cert. See https://badssl.com/ for more infos.
+      # 2) As docker compose only supports waiting for successful execution of other
+      #    services, we need to "flip" the exit code.
+      #  v That's what the "!" in the shell command line is for (for the bad URL,
+      #  v the command is expected to stop with exit code 1)
+      - "! critical-dir-apiimport --status_port=8080 --test_one_request --override_api_url=https://expired.badssl.com/"
+    depends_on:
+      init_adjust_permissions:
+        condition: service_completed_successfully
+      pgdatabase:
+        condition: service_healthy
+
 
   ### Run Analysis of Tests ###
   # Base parameters are identical
@@ -201,4 +227,6 @@ services:
       cdir_ing_badlat:
         condition: service_completed_successfully
       cdir_ing_badlng:
+        condition: service_completed_successfully
+      cdir_ing_badurl:
         condition: service_completed_successfully

@@ -24,9 +24,16 @@ jobs:
       - name: Test with pytest (Tests w/o DBMS)
         run: |
           pytest
+
       - name: "Bring up PostgreSQL"
         run: |
           docker compose -f tests/docker/docker-compose.ci-pytest.yml up -d --wait --wait-timeout 60
+      - name: Test with pytest (Tests with DBMS)
+        env:
+          TESTS_PG_DSN: postgres://testuser:testpwd@localhost:15432/testdb
+          TESTS_DO_NOT_DROP: 1
+        run: |
+          pytest
       - name: "Shut down PostgreSQL"
         if: always()
         run: |

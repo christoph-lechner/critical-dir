@@ -76,22 +76,24 @@ datacol_ddl = \
     longitude FLOAT,
     timestamp INT
 """
-def prepare_stg_table(cur, stg_table):
+def prepare_stg_table(cur, stg_table, *, temptbl=True):
+    tempflag = 'TEMPORARY' if temptbl else ''
     cur.execute(
         f"""
-        CREATE TEMPORARY TABLE {stg_table} (
+        CREATE {tempflag} TABLE {stg_table} (
             {datacol_ddl}
         );
         """
     )
 
-def data_add_hashes(cur, stg_dest, stg_src):
+def data_add_hashes(cur, stg_dest, stg_src, *, temptbl=True):
     """
     "stg_dest" is name of temporary destination table that is to be created by this function
     """
+    tempflag = 'TEMPORARY' if temptbl else ''
     cur.execute(
         f"""
-        CREATE TEMPORARY TABLE {stg_dest} AS (
+        CREATE {tempflag} TABLE {stg_dest} AS (
             SELECT
                 MD5(CONCAT(CONCAT(deviceid,'_'),'-',CONCAT(timestamp,'_'))) AS _h,
                 deviceid,latitude,longitude,timestamp
@@ -100,10 +102,11 @@ def data_add_hashes(cur, stg_dest, stg_src):
         """
     )
 
-def data_dedupl(cur, stg_dest, stg_src):
+def data_dedupl(cur, stg_dest, stg_src, *, temptbl=True):
+    tempflag = 'TEMPORARY' if temptbl else ''
     cur.execute(
         f"""
-            CREATE TEMPORARY TABLE {stg_dest} AS
+            CREATE {tempflag} TABLE {stg_dest} AS
             WITH q AS (
                 SELECT
                     _h,deviceid,latitude,longitude,timestamp,
@@ -171,20 +174,16 @@ def data_route_and_merge(cur, *, data_table, quarantine_table, stg_table):
     res_m_q = execute_merge(dst_table=quarantine_table, dataok=False)
     n_q = res_m_q['n_inserts']+res_m_q['n_updates']
 
-    """
-    # Count number of rows that do not meet requirements
-    # -> TODO: put them into quarantine
-    cur.execute(f'SELECT COUNT(*) AS c FROM {stg_table} WHERE flag_ok=0;')
-    res_c = cur.fetchone()
-
-    return res_m['n_inserts'],res_m['n_updates'],res_c['c']
-    """
     return res_m['n_inserts'],res_m['n_updates'],n_q
 
 
 #####
 
 def status_info_generate_id(*, cur, info_table='criticalmaps_stats_dev'):
+    """
+    Obtain file ID.
+    Information will be added later.
+    """
     cur.execute(
         f'INSERT INTO {info_table} (ts) VALUES (NULL) RETURNING id;'
     )
@@ -199,6 +198,60 @@ def store_status_info(*, cur, id_run:int=None, ps: ProcStats, info_table='critic
         'UPDATE ' +info_table+ ' SET ts=%s,total_time=%s,total_status=%s,   exc_inphase=%s,exc_name=%s,exc_info=%s,   api_http_response_code=%s,   fileok=%s,filename=%s,nrows_loaded=%s,nrows_inserts=%s,nrows_updates=%s,nrows_quarantine=%s WHERE id=%s',
         (ps.tstart,ps.total_time,ps.total_status,   ps.exc_inphase,ps.exc_name,ps.exc_info,   ps.api_http_response_code,   ps.fileok,ps.filename,ps.nrows_loaded,ps.nrows_inserts,ps.nrows_updates,ps.nrows_quarantine,   id_run)
     )
+
+#####
+
+@dataclass(frozen=True)
+class PipelineResult:
+    id_run: int
+    nrows_loaded: int
+    nrows_inserts: int
+    nrows_updates: int
+    nrows_quarantine: int
+    # for testing: expose names of tables that were generated
+    stg_table: str
+    stg_table_hashed: str
+    stg_table_dedupl: str
+
+
+def run_pipeline(cur,settings,data,t0, *, temptbl=True):
+    # create unique names for data staging steps
+    str_t0 = t0.strftime('%Y%m%dT%H%M%S')
+    stg_table = 'stg_'+str_t0
+    stg_table_hashed = stg_table + '_h'
+    stg_table_dedupl = stg_table + '_d'
+
+    # Obtain ID for this ingestion run, could be used to earmark rows in data tables etc.
+    # (there was no need to get it earlier, because only now we begin to actually insert data)
+    id_run = status_info_generate_id(cur=cur, info_table=settings.statstable)
+
+    # prepare and populate staging table
+    nrows_loaded=0
+    prepare_stg_table(cur, stg_table, temptbl=temptbl)
+    for d in data:
+        nrows_loaded+=1
+        cur.execute(
+            'INSERT INTO ' +stg_table+ ' (deviceid,latitude,longitude,timestamp) VALUES (%s,%s,%s,%s)',
+            (d.device, d.latitude, d.longitude, d.timestamp)
+        )
+
+    data_add_hashes(cur, stg_table_hashed, stg_table, temptbl=temptbl)
+    data_dedupl(cur, stg_table_dedupl, stg_table_hashed, temptbl=temptbl)
+    data_check_rules(cur=cur, stg=stg_table_dedupl) # adds column with "OK flag" to the table
+    data_add_id_run(cur=cur, stg=stg_table_dedupl, id_run=id_run)
+    nrows_inserts,nrows_updates,nrows_quarantine = data_route_and_merge(
+            cur,
+            data_table=settings.datatable,
+            quarantine_table=settings.quarantinetable,
+            stg_table=stg_table_dedupl
+    )
+
+    return PipelineResult(
+        id_run,
+        nrows_loaded=nrows_loaded, nrows_inserts=nrows_inserts, nrows_updates=nrows_updates, nrows_quarantine=nrows_quarantine,
+        stg_table=stg_table, stg_table_hashed=stg_table_hashed, stg_table_dedupl=stg_table_dedupl
+    )
+
 
 #####
 
@@ -290,39 +343,8 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
     # DB operations are in third try/catch block to make the program more robust
     # (for instance if a single operation fails for whatever reason)
     try:
-        # create unique names for data staging steps
-        str_t0 = tprocstart.strftime('%Y%m%dT%H%M%S')
-        stg_table = 'stg_'+str_t0
-        stg_table_hashed = stg_table + '_h'
-        stg_table_dedupl = stg_table + '_d'
-
         data = load_cmap_jsonfile(fn_out)
-
-        # Obtain ID for this ingestion run, could be used to earmark rows in data tables etc.
-        # (there was no need to get it earlier, because only now we begin to actually insert data)
-        id_run = status_info_generate_id(cur=cur, info_table=settings.statstable)
-
-        # prepare and populate staging table
-        nrows_loaded=0
-        prepare_stg_table(cur, stg_table)
-        for d in data:
-            nrows_loaded+=1
-            cur.execute(
-                'INSERT INTO ' +stg_table+ ' (deviceid,latitude,longitude,timestamp) VALUES (%s,%s,%s,%s)',
-                (d.device, d.latitude, d.longitude, d.timestamp)
-            )
-
-        data_add_hashes(cur, stg_table_hashed, stg_table)
-        data_dedupl(cur, stg_table_dedupl, stg_table_hashed)
-        data_check_rules(cur=cur, stg=stg_table_dedupl) # adds column with "OK flag" to the table
-        data_add_id_run(cur=cur, stg=stg_table_dedupl, id_run=id_run)
-        nrows_inserts,nrows_updates,nrows_quarantine = data_route_and_merge(
-                cur,
-                data_table=settings.datatable,
-                quarantine_table=settings.quarantinetable,
-                stg_table=stg_table_dedupl
-        )
-
+        res_pipeline = run_pipeline(cur, settings, data, tprocstart)
         procstats = ProcStats(
                 tstart=tprocstart,
                 total_time = (datetime.datetime.now() - tprocstart).total_seconds(),
@@ -330,12 +352,12 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
                 # 2026-06-29: at the moment not assigning HTTP response code
                 filename = str(fn_out),
                 fileok = True,
-                nrows_loaded = nrows_loaded,
-                nrows_inserts = nrows_inserts,
-                nrows_updates = nrows_updates,
-                nrows_quarantine = nrows_quarantine
+                nrows_loaded     = res_pipeline.nrows_loaded,
+                nrows_inserts    = res_pipeline.nrows_inserts,
+                nrows_updates    = res_pipeline.nrows_updates,
+                nrows_quarantine = res_pipeline.nrows_quarantine
         )
-        store_status_info(cur=cur, id_run=id_run, ps=procstats, info_table=settings.statstable)
+        store_status_info(cur=cur, id_run=res_pipeline.id_run, ps=procstats, info_table=settings.statstable)
 
         conn.commit()
     except Exception as e:
@@ -420,6 +442,7 @@ def t_download_thread(*, stop_event, q_retcode: queue.Queue=None, f_heartbeat: C
 
     if q_retcode:
         q_retcode.put(True)
+    return
 
 
 def mainloop(*, status):

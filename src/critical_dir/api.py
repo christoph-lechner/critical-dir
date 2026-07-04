@@ -89,13 +89,22 @@ security = HTTPBasic()
 def get_current_username(
     credentials: Annotated[HTTPBasicCredentials, Depends(security)],
 ):
+    # Get configured HTTP credentials. If they are not configured, the server response is always HTTP status 401
+    settings = get_settings()
+    if (not settings.http_username ) or (not settings.http_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
     current_username_bytes = credentials.username.encode("utf8")
-    correct_username_bytes = b"stanleyjobson"
+    correct_username_bytes = settings.http_username.encode('utf-8')
     is_correct_username = secrets.compare_digest(
         current_username_bytes, correct_username_bytes
     )
     current_password_bytes = credentials.password.encode("utf8")
-    correct_password_bytes = b"swordfish"
+    correct_password_bytes = settings.http_password.encode('utf-8')
     is_correct_password = secrets.compare_digest(
         current_password_bytes, correct_password_bytes
     )

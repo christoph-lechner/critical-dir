@@ -44,29 +44,6 @@ class ProcStats:
     nrows_updates: int = None
     nrows_quarantine: int = None
 
-"""
-Configuration of data output directory via environment variable
-"""
-
-cfg = {
-    # For HTTP-based health checking (if enabled). Age of last event seen that is still "good". Note that this cannot be changed at runtime.
-    'healthcheck_maxage': 900,
-}
-
-parser = argparse.ArgumentParser()
-
-# HTTP-based monitoring of the current status
-# You get HTTP status 200 if everything is OK (events are being processed),
-# and HTTP status 500 if there is an issue.
-# Use for example "curl --head http://localhost:9999/check" to check.
-parser.add_argument('--status_port', type=int, help='simple HTTP server for remote status checking', default=None)
-parser.add_argument('--override_api_url', type=str, help='override API URL to access (for automatic testing, can be http/https/file URL)')
-parser.add_argument('--test_one_request', action='store_true', help='Test mode (for automatic testing): Do not loop forever, only a single request is sent')
-args = parser.parse_args()
-
-if args.status_port:
-    # import here: break early when there are missing dependencies
-    from critical_dir.healthcheck import Healthcheck
 
 # data schema, without fields that will be added during the loading process: _h, id_run, and ts_entry_creating
 datacol_ddl = \
@@ -445,19 +422,19 @@ def t_download_thread(*, stop_event, q_retcode: queue.Queue=None, f_heartbeat: C
     return
 
 
-def mainloop(*, status):
+def mainloop(*, healthcheck=None, override_api_url=None, test_one_request=False):
     t_kw = {'stop_event':stop_event}
-    if status['healthcheck']:
-        f_heartbeat = status['healthcheck'].heartbeat
+    if healthcheck:
+        f_heartbeat = healthcheck.heartbeat
         # Only passing on function that signals heartbeat (and not the entire data structure!),
         # because the only thing this function does is to manipulate a thread-safe object
         t_kw['f_heartbeat'] = f_heartbeat
 
-    if args.override_api_url:
-        print(f'overriding API URL to {args.override_api_url}')
-        t_kw['override_api_url'] = args.override_api_url
+    if override_api_url:
+        print(f'overriding API URL to {override_api_url}')
+        t_kw['override_api_url'] = override_api_url
 
-    testmode = args.test_one_request
+    testmode = test_one_request
     if testmode:
         print('Running in a TEST MODE: only sending a single API request')
         t_kw['test_single_request'] = True
@@ -481,8 +458,8 @@ def mainloop(*, status):
     """
 
     t_dl.join()
-    if status['healthcheck']:
-        status['healthcheck'].stop_server()
+    if healthcheck:
+        healthcheck.stop_server()
 
     try:
         status = q_rc.get(timeout=60)
@@ -493,14 +470,35 @@ def mainloop(*, status):
     return status
 
 def main():
-    status={}
-    status['healthcheck'] = None
+    cfg = {
+        # For HTTP-based health checking (if enabled). Age of last event seen that is still "good". Note that this cannot be changed at runtime.
+        'healthcheck_maxage': 900,
+    }
+
+    parser = argparse.ArgumentParser()
+
+    # HTTP-based monitoring of the current status
+    # You get HTTP status 200 if everything is OK (events are being processed),
+    # and HTTP status 500 if there is an issue.
+    # Use for example "curl --head http://localhost:9999/check" to check.
+    parser.add_argument('--status_port', type=int, help='simple HTTP server for remote status checking', default=None)
+    parser.add_argument('--override_api_url', type=str, help='override API URL to access (for automatic testing, can be http/https/file URL)')
+    parser.add_argument('--test_one_request', action='store_true', help='Test mode (for automatic testing): Do not loop forever, only a single request is sent')
+    args = parser.parse_args()
+
+    kwargs = {}
+    if args.override_api_url:
+        kwargs['override_api_url'] = args.override_api_url
+    if args.test_one_request:
+        kwargs['test_one_request'] = args.test_one_request
     if args.status_port:
+        from critical_dir.healthcheck import Healthcheck
         # After the maximum age has been reached, the status will transition
         # from OK to error.
         # Note that there will be HTTP 500 until after the first successful data download
-        status['healthcheck'] = Healthcheck(http_port=args.status_port, max_age=cfg['healthcheck_maxage'])
-        status['healthcheck'].start_server()
+        my_healthcheck = Healthcheck(http_port=args.status_port, max_age=cfg['healthcheck_maxage'])
+        my_healthcheck.start_server()
+        kwargs['healthcheck'] = my_healthcheck
 
     # Install signal handlers
     # SIGTERM is handled for graceful termination
@@ -508,7 +506,7 @@ def main():
     signal.signal(signal.SIGTERM, sighandler_term)
     signal.signal(signal.SIGINT,  sighandler_term)
 
-    status = mainloop(status=status)
+    status = mainloop(**kwargs)
     if status:
         sys.exit(0)
     sys.exit(1)

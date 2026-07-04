@@ -21,6 +21,11 @@ class Settings(BaseSettings):
 
     test_mode: bool = False
 
+    # username/password for priviledged operations
+    # if not assigned by user, any access to priviledged op. will be blocked
+    http_username: str | None = None
+    http_password: str | None = None
+
     model_config = SettingsConfigDict(
         env_file='.env',
         # ?add env_file_encoding='utf-8'

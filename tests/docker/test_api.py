@@ -4,6 +4,7 @@ import requests
 import json
 import os
 from urllib.parse import urljoin
+import datetime
 
 def get_api_baseurl():
     """
@@ -14,6 +15,17 @@ def get_api_baseurl():
     if 'TEST_APIURL' in os.environ:
         apiurl = os.environ['TEST_APIURL']
     return apiurl
+
+def get_api_baseurl_auth():
+    """
+    Helper function for testing API server.
+    """
+    # default value
+    apiurl = 'http://localhost:8082/'
+    if 'TEST_APIURL_AUTH' in os.environ:
+        apiurl = os.environ['TEST_APIURL_AUTH']
+    return apiurl
+
 
 def get_clusters(maxdist=1.0):
     apiurl = urljoin(get_api_baseurl(), '/clusters')
@@ -76,3 +88,36 @@ def test_api_checks():
     doit('/health')
     doit('/health', method='head')
     # 2026-06-16: not checking: /location, /location_demo, /inspect -> considering to remove these
+
+def test_api_checks_t0():
+    ### First test: server without configured credentials -> has to return HTTP 401 ###
+    apiurl = urljoin(get_api_baseurl(), '/set_t0')
+    r = requests.post(apiurl)
+    # in the request no credentials were sent -> check that server sent HTTP status 401
+    assert r.status_code==401
+
+    ### Second test: server with configured credentials -> has to return HTTP 401 ###
+    apiurl = urljoin(get_api_baseurl_auth(), '/set_t0')
+    r = requests.post(apiurl)
+    # in the request no credentials were sent -> check that server sent HTTP status 401
+    assert r.status_code==401
+
+    ### Third test: server with configured credentials, test what happens with wrong credentials ###
+    cred = requests.auth.HTTPBasicAuth('user','badpassword')
+    apiurl = urljoin(get_api_baseurl_auth(), '/set_t0')
+    r = requests.post(apiurl, auth=cred)
+    # in the request wrong credentials were sent -> check that server sent HTTP status 401
+    assert r.status_code==401
+
+    ### Forth test: server with configured credentials, send correct request (including correct credentials) ###
+    # from "movie maker": datetime.datetime is not JSON realizable, so let's do it ourselves and format using strftime
+    t0 = datetime.datetime.now()
+    str_t0 = t0.strftime('%Y-%m-%dT%H:%M:%S')
+    payload = {'t0':str_t0}
+
+    cred = requests.auth.HTTPBasicAuth('johndoe','pwd')
+    apiurl = urljoin(get_api_baseurl_auth(), '/set_t0')
+    r = requests.post(apiurl, json=payload, auth=cred)
+    r.raise_for_status()
+    assert r.status_code==200
+

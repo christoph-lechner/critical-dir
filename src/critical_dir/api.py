@@ -75,6 +75,48 @@ class ServerSettings:
     t0: datetime.datetime = None
     t0_do_not_report: bool = False
 
+### AUTH CODE ###
+# https://fastapi.tiangolo.com/advanced/security/http-basic-auth/
+# last access 2026-07-04
+import secrets
+from typing import Annotated
+
+from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+
+security = HTTPBasic()
+
+def get_current_username(
+    credentials: Annotated[HTTPBasicCredentials, Depends(security)],
+):
+    # Get configured HTTP credentials. If they are not configured, the server response is always HTTP status 401
+    settings = get_settings()
+    if (not settings.http_username ) or (not settings.http_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
+    current_username_bytes = credentials.username.encode("utf8")
+    correct_username_bytes = settings.http_username.encode('utf-8')
+    is_correct_username = secrets.compare_digest(
+        current_username_bytes, correct_username_bytes
+    )
+    current_password_bytes = credentials.password.encode("utf8")
+    correct_password_bytes = settings.http_password.encode('utf-8')
+    is_correct_password = secrets.compare_digest(
+        current_password_bytes, correct_password_bytes
+    )
+    if not (is_correct_username and is_correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+### END AUTH CODE ###
+
 app = FastAPI(
     docs_url=None,          # disables /docs
     redoc_url=None,         # disables /redoc
@@ -456,11 +498,13 @@ def get_clusters(
     # Note: we don't include lat/long of all cluster members in response (privacy)
     return r
 
+
 @app.post('/set_t0')
-def set_t0(payload: SetT0Request):
+def set_t0(payload: SetT0Request, _: None = Depends(get_current_username)):
     """
     expecting timestamp in ISO format, for instance:
     curl -X POST \
+         -u "username:password" \
          -H "Content-Type: application/json" \
          -d '{"t0":"2026-06-14T14:50"}' \
          "http://localhost:8081/set_t0"

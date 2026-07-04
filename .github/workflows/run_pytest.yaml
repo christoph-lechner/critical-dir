@@ -19,7 +19,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .
-      - name: Test with pytest
-        run: |
           pip install pytest
+
+      - name: Test with pytest (Tests w/o DBMS)
+        run: |
           pytest
+      - name: "Bring up PostgreSQL"
+        run: |
+          docker compose -f tests/docker/docker-compose.ci-pytest.yml up -d --wait --wait-timeout 60
+      - name: "Shut down PostgreSQL"
+        if: always()
+        run: |
+          docker compose -f tests/docker/docker-compose.ci-pytest.yml down -v

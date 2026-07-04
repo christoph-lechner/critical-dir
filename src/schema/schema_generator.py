@@ -19,7 +19,7 @@ def generate_main_schema():
     print(t)
 
 def generate_dockeringtest_schema():
-    for k in ['_test', '_test_idempotency', '_test_badlat', '_test_badlng']:
+    for k in ['_test', '_test_idempotency', '_test_badlat', '_test_badlng', '_test_badurl']:
         t = template.render(id_project=k)
         print(t)
 

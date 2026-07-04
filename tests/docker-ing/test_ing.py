@@ -115,3 +115,24 @@ def test_analyze_badlatlng(capsys):
         assert res[0]['nrows_inserts']==nrows_in_file-1
         assert res[0]['nrows_updates']==0
         assert res[0]['nrows_quarantine']==1
+
+def test_analyze_badurl(capsys):
+    conn = get_db_conn()
+    # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
+    cur = conn.cursor(row_factory=dict_row)
+
+    # FIXME: hard-coded table name
+
+    # Check that the (expected) exception was correctly recorded in the DB
+    cur.execute('SELECT exc_inphase,exc_name,COUNT(*) AS c FROM criticalmaps_stats_test_badurl GROUP BY 1,2 ORDER BY 1,2;')
+    res = cur.fetchall()
+    assert len(res)==1
+    assert res[0]['exc_inphase']=='API access'
+    # check name of the exception (we expect SSLError, but because outcome here
+    # depends on external server we don't control, let's also allow ConnectionError)
+    assert res[0]['exc_name'] in ['SSLError','ConnectionError']
+    assert res[0]['c']==1 # ensure the exception was only fired a single time
+
+    # there must be no data in the data tables
+    for tblname in ['criticalmaps_data_quarantine_test_badurl','criticalmaps_data_test_badurl']:
+        assert 0==helper_get_nrows(cur, tblname)

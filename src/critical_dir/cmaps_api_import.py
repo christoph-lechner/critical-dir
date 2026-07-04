@@ -44,29 +44,6 @@ class ProcStats:
     nrows_updates: int = None
     nrows_quarantine: int = None
 
-"""
-Configuration of data output directory via environment variable
-"""
-
-cfg = {
-    # For HTTP-based health checking (if enabled). Age of last event seen that is still "good". Note that this cannot be changed at runtime.
-    'healthcheck_maxage': 900,
-}
-
-parser = argparse.ArgumentParser()
-
-# HTTP-based monitoring of the current status
-# You get HTTP status 200 if everything is OK (events are being processed),
-# and HTTP status 500 if there is an issue.
-# Use for example "curl --head http://localhost:9999/check" to check.
-parser.add_argument('--status_port', type=int, help='simple HTTP server for remote status checking', default=None)
-parser.add_argument('--override_api_url', type=str, help='override API URL to access (for automatic testing, can be http/https/file URL)')
-parser.add_argument('--test_one_request', action='store_true', help='Test mode (for automatic testing): Do not loop forever, only a single request is sent')
-args = parser.parse_args()
-
-if args.status_port:
-    # import here: break early when there are missing dependencies
-    from critical_dir.healthcheck import Healthcheck
 
 # data schema, without fields that will be added during the loading process: _h, id_run, and ts_entry_creating
 datacol_ddl = \
@@ -76,22 +53,24 @@ datacol_ddl = \
     longitude FLOAT,
     timestamp INT
 """
-def prepare_stg_table(cur, stg_table):
+def prepare_stg_table(cur, stg_table, *, temptbl=True):
+    tempflag = 'TEMPORARY' if temptbl else ''
     cur.execute(
         f"""
-        CREATE TEMPORARY TABLE {stg_table} (
+        CREATE {tempflag} TABLE {stg_table} (
             {datacol_ddl}
         );
         """
     )
 
-def data_add_hashes(cur, stg_dest, stg_src):
+def data_add_hashes(cur, stg_dest, stg_src, *, temptbl=True):
     """
     "stg_dest" is name of temporary destination table that is to be created by this function
     """
+    tempflag = 'TEMPORARY' if temptbl else ''
     cur.execute(
         f"""
-        CREATE TEMPORARY TABLE {stg_dest} AS (
+        CREATE {tempflag} TABLE {stg_dest} AS (
             SELECT
                 MD5(CONCAT(CONCAT(deviceid,'_'),'-',CONCAT(timestamp,'_'))) AS _h,
                 deviceid,latitude,longitude,timestamp
@@ -100,10 +79,11 @@ def data_add_hashes(cur, stg_dest, stg_src):
         """
     )
 
-def data_dedupl(cur, stg_dest, stg_src):
+def data_dedupl(cur, stg_dest, stg_src, *, temptbl=True):
+    tempflag = 'TEMPORARY' if temptbl else ''
     cur.execute(
         f"""
-            CREATE TEMPORARY TABLE {stg_dest} AS
+            CREATE {tempflag} TABLE {stg_dest} AS
             WITH q AS (
                 SELECT
                     _h,deviceid,latitude,longitude,timestamp,
@@ -171,20 +151,16 @@ def data_route_and_merge(cur, *, data_table, quarantine_table, stg_table):
     res_m_q = execute_merge(dst_table=quarantine_table, dataok=False)
     n_q = res_m_q['n_inserts']+res_m_q['n_updates']
 
-    """
-    # Count number of rows that do not meet requirements
-    # -> TODO: put them into quarantine
-    cur.execute(f'SELECT COUNT(*) AS c FROM {stg_table} WHERE flag_ok=0;')
-    res_c = cur.fetchone()
-
-    return res_m['n_inserts'],res_m['n_updates'],res_c['c']
-    """
     return res_m['n_inserts'],res_m['n_updates'],n_q
 
 
 #####
 
 def status_info_generate_id(*, cur, info_table='criticalmaps_stats_dev'):
+    """
+    Obtain file ID.
+    Information will be added later.
+    """
     cur.execute(
         f'INSERT INTO {info_table} (ts) VALUES (NULL) RETURNING id;'
     )
@@ -199,6 +175,60 @@ def store_status_info(*, cur, id_run:int=None, ps: ProcStats, info_table='critic
         'UPDATE ' +info_table+ ' SET ts=%s,total_time=%s,total_status=%s,   exc_inphase=%s,exc_name=%s,exc_info=%s,   api_http_response_code=%s,   fileok=%s,filename=%s,nrows_loaded=%s,nrows_inserts=%s,nrows_updates=%s,nrows_quarantine=%s WHERE id=%s',
         (ps.tstart,ps.total_time,ps.total_status,   ps.exc_inphase,ps.exc_name,ps.exc_info,   ps.api_http_response_code,   ps.fileok,ps.filename,ps.nrows_loaded,ps.nrows_inserts,ps.nrows_updates,ps.nrows_quarantine,   id_run)
     )
+
+#####
+
+@dataclass(frozen=True)
+class PipelineResult:
+    id_run: int
+    nrows_loaded: int
+    nrows_inserts: int
+    nrows_updates: int
+    nrows_quarantine: int
+    # for testing: expose names of tables that were generated
+    stg_table: str
+    stg_table_hashed: str
+    stg_table_dedupl: str
+
+
+def run_pipeline(cur,settings,data,t0, *, temptbl=True):
+    # create unique names for data staging steps
+    str_t0 = t0.strftime('%Y%m%dT%H%M%S')
+    stg_table = 'stg_'+str_t0
+    stg_table_hashed = stg_table + '_h'
+    stg_table_dedupl = stg_table + '_d'
+
+    # Obtain ID for this ingestion run, could be used to earmark rows in data tables etc.
+    # (there was no need to get it earlier, because only now we begin to actually insert data)
+    id_run = status_info_generate_id(cur=cur, info_table=settings.statstable)
+
+    # prepare and populate staging table
+    nrows_loaded=0
+    prepare_stg_table(cur, stg_table, temptbl=temptbl)
+    for d in data:
+        nrows_loaded+=1
+        cur.execute(
+            'INSERT INTO ' +stg_table+ ' (deviceid,latitude,longitude,timestamp) VALUES (%s,%s,%s,%s)',
+            (d.device, d.latitude, d.longitude, d.timestamp)
+        )
+
+    data_add_hashes(cur, stg_table_hashed, stg_table, temptbl=temptbl)
+    data_dedupl(cur, stg_table_dedupl, stg_table_hashed, temptbl=temptbl)
+    data_check_rules(cur=cur, stg=stg_table_dedupl) # adds column with "OK flag" to the table
+    data_add_id_run(cur=cur, stg=stg_table_dedupl, id_run=id_run)
+    nrows_inserts,nrows_updates,nrows_quarantine = data_route_and_merge(
+            cur,
+            data_table=settings.datatable,
+            quarantine_table=settings.quarantinetable,
+            stg_table=stg_table_dedupl
+    )
+
+    return PipelineResult(
+        id_run,
+        nrows_loaded=nrows_loaded, nrows_inserts=nrows_inserts, nrows_updates=nrows_updates, nrows_quarantine=nrows_quarantine,
+        stg_table=stg_table, stg_table_hashed=stg_table_hashed, stg_table_dedupl=stg_table_dedupl
+    )
+
 
 #####
 
@@ -290,39 +320,8 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
     # DB operations are in third try/catch block to make the program more robust
     # (for instance if a single operation fails for whatever reason)
     try:
-        # create unique names for data staging steps
-        str_t0 = tprocstart.strftime('%Y%m%dT%H%M%S')
-        stg_table = 'stg_'+str_t0
-        stg_table_hashed = stg_table + '_h'
-        stg_table_dedupl = stg_table + '_d'
-
         data = load_cmap_jsonfile(fn_out)
-
-        # Obtain ID for this ingestion run, could be used to earmark rows in data tables etc.
-        # (there was no need to get it earlier, because only now we begin to actually insert data)
-        id_run = status_info_generate_id(cur=cur, info_table=settings.statstable)
-
-        # prepare and populate staging table
-        nrows_loaded=0
-        prepare_stg_table(cur, stg_table)
-        for d in data:
-            nrows_loaded+=1
-            cur.execute(
-                'INSERT INTO ' +stg_table+ ' (deviceid,latitude,longitude,timestamp) VALUES (%s,%s,%s,%s)',
-                (d.device, d.latitude, d.longitude, d.timestamp)
-            )
-
-        data_add_hashes(cur, stg_table_hashed, stg_table)
-        data_dedupl(cur, stg_table_dedupl, stg_table_hashed)
-        data_check_rules(cur=cur, stg=stg_table_dedupl) # adds column with "OK flag" to the table
-        data_add_id_run(cur=cur, stg=stg_table_dedupl, id_run=id_run)
-        nrows_inserts,nrows_updates,nrows_quarantine = data_route_and_merge(
-                cur,
-                data_table=settings.datatable,
-                quarantine_table=settings.quarantinetable,
-                stg_table=stg_table_dedupl
-        )
-
+        res_pipeline = run_pipeline(cur, settings, data, tprocstart)
         procstats = ProcStats(
                 tstart=tprocstart,
                 total_time = (datetime.datetime.now() - tprocstart).total_seconds(),
@@ -330,12 +329,12 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
                 # 2026-06-29: at the moment not assigning HTTP response code
                 filename = str(fn_out),
                 fileok = True,
-                nrows_loaded = nrows_loaded,
-                nrows_inserts = nrows_inserts,
-                nrows_updates = nrows_updates,
-                nrows_quarantine = nrows_quarantine
+                nrows_loaded     = res_pipeline.nrows_loaded,
+                nrows_inserts    = res_pipeline.nrows_inserts,
+                nrows_updates    = res_pipeline.nrows_updates,
+                nrows_quarantine = res_pipeline.nrows_quarantine
         )
-        store_status_info(cur=cur, id_run=id_run, ps=procstats, info_table=settings.statstable)
+        store_status_info(cur=cur, id_run=res_pipeline.id_run, ps=procstats, info_table=settings.statstable)
 
         conn.commit()
     except Exception as e:
@@ -420,21 +419,22 @@ def t_download_thread(*, stop_event, q_retcode: queue.Queue=None, f_heartbeat: C
 
     if q_retcode:
         q_retcode.put(True)
+    return
 
 
-def mainloop(*, status):
+def mainloop(*, healthcheck=None, override_api_url=None, test_one_request=False):
     t_kw = {'stop_event':stop_event}
-    if status['healthcheck']:
-        f_heartbeat = status['healthcheck'].heartbeat
+    if healthcheck:
+        f_heartbeat = healthcheck.heartbeat
         # Only passing on function that signals heartbeat (and not the entire data structure!),
         # because the only thing this function does is to manipulate a thread-safe object
         t_kw['f_heartbeat'] = f_heartbeat
 
-    if args.override_api_url:
-        print(f'overriding API URL to {args.override_api_url}')
-        t_kw['override_api_url'] = args.override_api_url
+    if override_api_url:
+        print(f'overriding API URL to {override_api_url}')
+        t_kw['override_api_url'] = override_api_url
 
-    testmode = args.test_one_request
+    testmode = test_one_request
     if testmode:
         print('Running in a TEST MODE: only sending a single API request')
         t_kw['test_single_request'] = True
@@ -458,8 +458,8 @@ def mainloop(*, status):
     """
 
     t_dl.join()
-    if status['healthcheck']:
-        status['healthcheck'].stop_server()
+    if healthcheck:
+        healthcheck.stop_server()
 
     try:
         status = q_rc.get(timeout=60)
@@ -470,14 +470,35 @@ def mainloop(*, status):
     return status
 
 def main():
-    status={}
-    status['healthcheck'] = None
+    cfg = {
+        # For HTTP-based health checking (if enabled). Age of last event seen that is still "good". Note that this cannot be changed at runtime.
+        'healthcheck_maxage': 900,
+    }
+
+    parser = argparse.ArgumentParser()
+
+    # HTTP-based monitoring of the current status
+    # You get HTTP status 200 if everything is OK (events are being processed),
+    # and HTTP status 500 if there is an issue.
+    # Use for example "curl --head http://localhost:9999/check" to check.
+    parser.add_argument('--status_port', type=int, help='simple HTTP server for remote status checking', default=None)
+    parser.add_argument('--override_api_url', type=str, help='override API URL to access (for automatic testing, can be http/https/file URL)')
+    parser.add_argument('--test_one_request', action='store_true', help='Test mode (for automatic testing): Do not loop forever, only a single request is sent')
+    args = parser.parse_args()
+
+    kwargs = {}
+    if args.override_api_url:
+        kwargs['override_api_url'] = args.override_api_url
+    if args.test_one_request:
+        kwargs['test_one_request'] = args.test_one_request
     if args.status_port:
+        from critical_dir.healthcheck import Healthcheck
         # After the maximum age has been reached, the status will transition
         # from OK to error.
         # Note that there will be HTTP 500 until after the first successful data download
-        status['healthcheck'] = Healthcheck(http_port=args.status_port, max_age=cfg['healthcheck_maxage'])
-        status['healthcheck'].start_server()
+        my_healthcheck = Healthcheck(http_port=args.status_port, max_age=cfg['healthcheck_maxage'])
+        my_healthcheck.start_server()
+        kwargs['healthcheck'] = my_healthcheck
 
     # Install signal handlers
     # SIGTERM is handled for graceful termination
@@ -485,7 +506,7 @@ def main():
     signal.signal(signal.SIGTERM, sighandler_term)
     signal.signal(signal.SIGINT,  sighandler_term)
 
-    status = mainloop(status=status)
+    status = mainloop(**kwargs)
     if status:
         sys.exit(0)
     sys.exit(1)

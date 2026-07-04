@@ -1,0 +1,22 @@
+# For local development of tests:
+# To bring this file up, run
+#    docker compose -f docker-compose.ci-pytest.yml up
+services:
+  pgdatabase:
+    image: postgres:18
+    environment:
+      - POSTGRES_USER=testuser
+      - POSTGRES_PASSWORD=testpwd
+      - POSTGRES_DB=testdb
+    # exposing ports on host system
+    ports:
+      - "15432:5432"
+    tmpfs:
+      # put DB on tmpfs to make it forget everything once we shut down
+      # -> forces DB to be initialized from sql files every time we run this
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser -d testdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10

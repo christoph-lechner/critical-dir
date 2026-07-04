@@ -35,4 +35,5 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.pytest.ini_options]
+# Note: conftest.py file excludes certain subdirs -- unless enabled by command line option
 testpaths = ["tests"]

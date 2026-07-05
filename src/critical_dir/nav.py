@@ -1,5 +1,7 @@
 import numpy as np
 
+# Note added July-2026: The web app repo contains a superior Python implementation using atan2
+
 def get_nav(point1, point2):
     """
     point1 is starting coordinates

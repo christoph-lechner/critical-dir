@@ -45,6 +45,8 @@ A reasonable starting point for selecting parameters could be
 * ignore "isolated" devices (devices that aren't part of any clusters)
 
 ### Examples
+**New:** A short demonstration video compiled from a sequence of screenshots of the web map is available [here](https://obj.clsrv.de/projects/crit_dir/videos/sternfahrt2026_koehlbrandbruecke__20260629.mp4). It shows a group of cyclists (red cluster) crossing the [K&ouml;hlbrand Bridge](https://en.wikipedia.org/wiki/K%C3%B6hlbrand_Bridge) in Hamburg during the &quot;Sternfahrt&quot; in June 2026.
+
 ![](https://obj.clsrv.de/temp/20260617__client.png)
 
 

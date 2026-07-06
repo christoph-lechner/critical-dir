@@ -1,0 +1,10 @@
+# ignore files with sensitive information
+.env
+
+# ignore Python virtual environments on my dev machine
+/venv
+/venv_scratch
+
+# ignore Docker-related file
+/Dockerfile*
+/.dockerignore

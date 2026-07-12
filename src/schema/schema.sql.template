@@ -59,4 +59,7 @@ CREATE INDEX ON criticalmaps_data{{ id_project }}(deviceid,timestamp);
 CREATE INDEX ON criticalmaps_data{{ id_project }}(latitude,longitude);
 -- index for queries such as "SELECT MAX(timestamp) AS timestamp_mostrecent FROM criticalmaps_data"
 CREATE INDEX ON criticalmaps_data{{ id_project }}(timestamp);
+
+-- index for stats queries such as "number of successful ingestion runs in previous 7 days"
+CREATE INDEX ON criticalmaps_stats{{ id_project }}((ts,total_status);
 {% endif %}

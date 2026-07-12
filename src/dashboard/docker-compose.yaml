@@ -4,6 +4,11 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: on-failure
+    # The following parameters are set in the .env file:
+    # - CRITICAL_DIR_PG_DSN
+    # - CRITICAL_DIR_DATATABLE
+    # - CRITICAL_DIR_QUARANTINETABLE
+    # - CRITICAL_DIR_STATSTABLE
     env_file: .env
     volumes:
       - "./app:/app:ro"

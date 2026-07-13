@@ -12,6 +12,10 @@ CREATE TABLE api_perf_log(
 	UNIQUE(unique_id)
 );
 
+CREATE INDEX ON api_perf_log(ts);
+CREATE INDEX ON api_perf_log(path,method);
+CREATE INDEX ON api_perf_log(status);
+
 
 -- https://www.caktusgroup.com/blog/2025/06/16/avoiding-timezone-traps-correctly-extracting-datetime-subfields-django-postgresql/
 -- Consider using "SET TIME ZONE 'Europe/Berlin';" at start up time of dashboard app.

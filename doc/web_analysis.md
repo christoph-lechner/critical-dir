@@ -28,7 +28,7 @@ GROUP BY 1
 ORDER BY 1;
 ```
 
-Next, let's fill the gaps in the time series:
+Next, let's fill the gaps in the time series and report percentiles only if there is sufficient data:
 ```
 WITH q_agg AS(
 	SELECT
@@ -53,8 +53,10 @@ tser AS(
 SELECT
 	tser.x,
 	-- if there is NO data, we report count=0 (instead of NULL)
-	COALESCE(q_agg.c,0),
-	q_agg.p50,q_agg.p90
+	COALESCE(q_agg.c,0) AS c,
+	-- report percentiles only when there is sufficient data
+	CASE WHEN q_agg.c>=10 THEN q_agg.p50 ELSE NULL END AS p50,
+	CASE WHEN q_agg.c>=10 THEN q_agg.p90 ELSE NULL END AS p90
 FROM tser
 LEFT JOIN q_agg ON tser.x=q_agg.h
 ORDER BY tser.x;

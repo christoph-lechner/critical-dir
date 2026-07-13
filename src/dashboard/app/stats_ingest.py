@@ -36,7 +36,7 @@ def get_ing_devstats(cur):
     cur.execute(
         """
         SELECT
-            DATE(ts) AS d,
+            DATE_TRUNC('HOUR', ts AT TIME ZONE 'Europe/Berlin') AS d,
             MIN(nrows_loaded) AS min,
             MAX(nrows_loaded) AS max
         FROM criticalmaps_stats

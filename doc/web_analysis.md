@@ -27,3 +27,35 @@ WHERE
 GROUP BY 1
 ORDER BY 1;
 ```
+
+Next, let's fill the gaps in the time series:
+```
+WITH q_agg AS(
+	SELECT
+		DATE_BIN('15 MINUTES', ts AT TIME ZONE 'Europe/Berlin', '2026-01-01 UTC') AS h,
+		COUNT(*) AS c,
+		PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY time) AS p50,
+		PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY time) AS p90
+	FROM api_perf_log
+	WHERE
+		method='GET' AND path='/myapp/api/clusters'
+	GROUP BY 1
+	ORDER BY 1
+),
+tser AS(
+	SELECT
+		generate_series(
+			(SELECT MIN(h) FROM q_agg),
+			(SELECT MAX(h) FROM q_agg),
+			INTERVAL '15 MINUTES'
+		) AS x
+)
+SELECT
+	tser.x,
+	-- if there is NO data, we report count=0 (instead of NULL)
+	COALESCE(q_agg.c,0),
+	q_agg.p50,q_agg.p90
+FROM tser
+LEFT JOIN q_agg ON tser.x=q_agg.h
+ORDER BY tser.x;
+```

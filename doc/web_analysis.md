@@ -2,12 +2,14 @@
 
 CREATE TABLE api_perf_log(
 	ts TIMESTAMP WITH TIME ZONE,
+	unique_id TEXT,
 	time INT,
 	status INT,
 	response_size INT,
 	method TEXT,
 	path TEXT,
-	protocol TEXT
+	protocol TEXT,
+	UNIQUE(unique_id)
 );
 
 

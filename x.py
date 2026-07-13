@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 
+# CL, 2026-07-13
+
 # TODO:
-# Add staging table, hash filename, line number, timestamp to ensure
-# this loading process does not load the same line twice.
-# Check if Apache2 can write a unique request id to the logfile (this would already solve this issue).
-# -> https://httpd.apache.org/docs/current/mod/mod_unique_id.html sets UNIQUE_ID environment variable
+# Add staging table and MERGE then with data table,
+# this ensures that we don't load log entries multiple times.
+# Using UNIQUE_ID provided by apache webserver
+# -> https://httpd.apache.org/docs/current/mod/mod_unique_id.html
 
 import psycopg
 from psycopg.rows import dict_row
@@ -15,6 +17,7 @@ from pydantic import BaseModel, Field
 
 class PerformanceLogEntry(BaseModel):
     ts: datetime.datetime
+    unique_id: str
     time: int
     status: int
     response_size: int = Field(ge=0)
@@ -23,7 +26,7 @@ class PerformanceLogEntry(BaseModel):
     protocol: str
 
     @classmethod
-    def from_match(cls, m: re.Match) -> "LogEntry":
+    def from_match(cls, m: re.Match) -> "PerformanceLogEntry":
         data = m.groupdict()
 
         # type conversions
@@ -34,7 +37,6 @@ class PerformanceLogEntry(BaseModel):
             data['ts'],
             '%d/%b/%Y:%H:%M:%S %z'
         )
-
         return cls.model_validate(data)
 
 def iter_log(filename: str) -> Iterator[PerformanceLogEntry]:
@@ -45,6 +47,7 @@ def iter_log(filename: str) -> Iterator[PerformanceLogEntry]:
     # [12/Jul/2026:21:24:33 +0000] 47609 200 - "HEAD /myapp/api/health HTTP/1.1"
     PERFORMANCE_LOG_PATTERN = re.compile(
         r'\[(?P<ts>[^\]]+)\] '
+        r'(?P<unique_id>\S+) '
         r'(?P<time>\d+) '
         r'(?P<status>\d+) '
         r'(?P<response_size>\S+) ' # "-" means no bytes were sent (for instance: HEAD method)
@@ -67,9 +70,9 @@ def main():
         cur.execute(
             """
             INSERT INTO api_perf_log
-                (ts,time,status,response_size, method,path,protocol)
+                (ts,unique_id, time,status,response_size, method,path,protocol)
             VALUES
-                (%(ts)s,%(time)s,%(status)s,%(response_size)s, %(method)s,%(path)s,%(protocol)s)
+                (%(ts)s,%(unique_id)s, %(time)s,%(status)s,%(response_size)s, %(method)s,%(path)s,%(protocol)s)
             """,
             q.model_dump()
         )

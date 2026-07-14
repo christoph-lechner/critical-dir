@@ -9,6 +9,7 @@ CREATE TABLE api_perf_log(
 	method TEXT,
 	path TEXT,
 	protocol TEXT,
+	ts_entry_creation TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 	UNIQUE(unique_id)
 );
 

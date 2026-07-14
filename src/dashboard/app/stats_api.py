@@ -56,6 +56,9 @@ st.write(
     """
 )
 df = get_api_stats(cur)
+if len(df.index)==0:
+    st.warning('Insufficient data in database')
+    st.stop()
 st.line_chart(df, x='x', y='c', x_label='time stamp', y_label='API requests / 15min')
 
 st.write(

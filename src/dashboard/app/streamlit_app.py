@@ -15,6 +15,11 @@ def run() -> None:
                     title="Ingestion statistics",
                     icon=":material/table:",
                 ),
+                st.Page(
+                    dir_path / "stats_api.py",
+                    title="API statistics",
+                    icon=":material/table:",
+                ),
             ]
         }
     )

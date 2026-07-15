@@ -15,11 +15,14 @@ def get_ing_nfailedruns(cur):
     return res['c']
 
 def get_api_statshealthchecks(cur, *, endpoint='/myapp/api/health', ndays=30):
+    # As of July-2026, the healthcheck API endpoint returns
+    # HTTP status 200 if everything is OK, and 500 if there is an issue.
+    # For now, we simply consider everything that is not HTTP status 200 as "fail".
     cur.execute(
         """
         SELECT
             COALESCE(SUM(CASE WHEN status=200 THEN 1 END), 0) AS n_ok,
-            COALESCE(SUM(CASE WHEN status=500 THEN 1 END), 0) AS n_fail
+            COALESCE(SUM(CASE WHEN status!=200 THEN 1 END), 0) AS n_fail
         FROM api_perf_log
         WHERE ts >= NOW() - %(ndays)s*INTERVAL '1 DAYS' AND path=%(endpoint)s;
         """,

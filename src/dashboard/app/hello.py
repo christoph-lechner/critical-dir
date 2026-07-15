@@ -21,7 +21,7 @@ def get_api_statshealthchecks(cur, *, endpoint='/myapp/api/health', ndays=30):
             COALESCE(SUM(CASE WHEN status=200 THEN 1 END), 0) AS n_ok,
             COALESCE(SUM(CASE WHEN status=500 THEN 1 END), 0) AS n_fail
         FROM api_perf_log
-        WHERE ts >= NOW()-INTERVAL '%(ndays)s DAYS' AND path=%(endpoint)s;
+        WHERE ts >= NOW() - %(ndays)s*INTERVAL '1 DAYS' AND path=%(endpoint)s;
         """,
         {'endpoint': endpoint, 'ndays':ndays}
     )
@@ -38,7 +38,7 @@ def get_api_hits(cur, *, endpoint='/myapp/api/clusters', method='GET', ndays=30)
 	        (PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY time))/1.0e3 AS p90
         FROM api_perf_log
         WHERE
-            ts >= NOW()-INTERVAL '%(ndays)s DAYS'
+            ts >= NOW() - %(ndays)s*INTERVAL '1 DAYS'
             AND
             method=%(method)s AND path=%(endpoint)s;
         """,

@@ -109,4 +109,4 @@ fig.add_trace(
 fig.update_xaxes(title_text='date')
 fig.update_yaxes(title_text='# devices')
 fig.update_layout(hovermode='x unified') # one tooltip for all traces
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, width='stretch')

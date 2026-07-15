@@ -14,7 +14,7 @@ def get_api_stats(cur, *, endpoint='/myapp/api/clusters', method='GET'):
                 PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY time) AS p90
             FROM api_perf_log
             WHERE
-                ts >= NOW()-INTERVAL '%(ndays)s DAYS'
+                ts >= NOW() - %(ndays)s*INTERVAL '1 DAYS'
                 AND
                 method=%(method)s AND path=%(endpoint)s
             GROUP BY 1
@@ -45,20 +45,27 @@ def get_api_stats(cur, *, endpoint='/myapp/api/clusters', method='GET'):
     df = pd.DataFrame.from_dict(res)
     return df
 
-
+# establish DB connection
 conn = get_db_conn()
 from psycopg.rows import dict_row
 cur = conn.cursor(row_factory=dict_row)
+
+# get the needed data
+df = get_api_stats(cur)
+if len(df.index)==0:
+    st.warning('Insufficient data in database')
+    st.stop()
+
+cur.close()
+conn.close()
+
+
 
 st.write(
     """
     ## Number of API Requests
     """
 )
-df = get_api_stats(cur)
-if len(df.index)==0:
-    st.warning('Insufficient data in database')
-    st.stop()
 st.line_chart(df, x='x', y='c', x_label='time stamp', y_label='API requests / 15min')
 
 st.write(
@@ -82,4 +89,4 @@ fig = px.line(
 # Update legend texts (default is name of column in data frame)
 fig.for_each_trace(lambda t: t.update(name=traces.get(t.name,t.name)))
 fig.update_layout(xaxis_title='time stamp', yaxis_title='Response Time [ms]', legend_title_text='Percentiles')
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, width='stretch')

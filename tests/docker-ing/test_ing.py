@@ -9,6 +9,20 @@ def helper_get_nrows(cur, tbl:str) -> int:
     assert res is not None
     return res['c']
 
+def helper_count_identical_rows_data_and_archive(cur, tbl_data:str, tbl_archive:str) -> int:
+    # Note that data table has field 'deviceid', archive table has 'deviceid_h' with hashed IDs instead
+    cur.execute(
+        f"""
+        SELECT COUNT(*) AS c
+        FROM {tbl_data} q1
+        INNER JOIN {tbl_archive} q2 ON q1._h=q2._h
+        WHERE q1.latitude=q2.latitude AND q1.longitude=q2.longitude AND q1.timestamp=q2.timestamp AND q1.ts_entry_creation=q2.ts_entry_creation;
+        """
+    )
+    res = cur.fetchone()
+    assert res is not None
+    return res['c']
+
 def test_analyze_ingestion(capsys):
     """
     First tests for ingestion script.
@@ -45,6 +59,9 @@ def test_analyze_ingestion(capsys):
 
     # test file describes 8 devices, so we expect 8 rows in DB
     assert 8==datatable_nrows
+
+    # compare data and archive tables (function returns number of rows in agreement)
+    assert 8==helper_count_identical_rows_data_and_archive(cur, tbl_data=settings.datatable, tbl_archive=settings.archivetable)
 
 def test_analyze_idempotence(capsys):
     """
@@ -86,6 +103,11 @@ def test_analyze_idempotence(capsys):
     assert res[1]['nrows_updates']==nrows_expected
     assert res[1]['nrows_quarantine']==0
 
+
+    # compare data and archive tables (function returns number of rows in agreement)
+    # FIXME: hard-coded table names
+    assert 8==helper_count_identical_rows_data_and_archive(cur, tbl_data='criticalmaps_data_test_idempotency', tbl_archive='criticalmaps_data_archive_test_idempotency')
+
 def test_analyze_badlatlng(capsys):
     """
     Evaluates the test with bad latitude/longitude.
@@ -115,6 +137,11 @@ def test_analyze_badlatlng(capsys):
         assert res[0]['nrows_inserts']==nrows_in_file-1
         assert res[0]['nrows_updates']==0
         assert res[0]['nrows_quarantine']==1
+
+    # compare data and archive tables (function returns number of rows in agreement)
+    # FIXME: hard-coded table names
+    assert (nrows_in_file-1)==helper_count_identical_rows_data_and_archive(cur, tbl_data='criticalmaps_data_test_badlat', tbl_archive='criticalmaps_data_archive_test_badlat')
+    assert (nrows_in_file-1)==helper_count_identical_rows_data_and_archive(cur, tbl_data='criticalmaps_data_test_badlng', tbl_archive='criticalmaps_data_archive_test_badlng')
 
 def test_analyze_badurl(capsys):
     conn = get_db_conn()

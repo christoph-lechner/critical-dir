@@ -29,7 +29,7 @@ Tests reaction to issues with API requests.
 For the test to pass, there has to be a single entry in the table informing us about the type of exception and further details.
 
 ## Useful commands
-(See also [../docker/README.md](here) for more infos)
+(See also [here](../docker/README.md) for more infos)
 ```
 docker compose -f ./tests/docker/docker-compose.ci-ingest.yml build
 docker compose -f ./tests/docker/docker-compose.ci-ingest.yml run --rm tests

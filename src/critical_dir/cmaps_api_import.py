@@ -66,13 +66,24 @@ def prepare_stg_table(cur, stg_table, *, temptbl=True):
 def data_add_hashes(cur, stg_dest, stg_src, *, temptbl=True):
     """
     "stg_dest" is name of temporary destination table that is to be created by this function
+
+    This function adds two different hashes:
+    . a hash for deduplication
+    . a hashed deviceid (together with date in timestamp) for archive table.
     """
     tempflag = 'TEMPORARY' if temptbl else ''
     cur.execute(
         f"""
         CREATE {tempflag} TABLE {stg_dest} AS (
             SELECT
+                -- Hash for deduplication
                 MD5(CONCAT(CONCAT(deviceid,'_'),'-',CONCAT(timestamp,'_'))) AS _h,
+                -- Hash for archive table
+                MD5( CONCAT(
+                    COALESCE(deviceid,'<NULL>'), '-',
+                    -- For stable, locale-independent representation of the date extracted from the epoch: (i) forcing timezone UTC; (ii) using 'to_char' 
+                    COALESCE(TO_CHAR((TO_TIMESTAMP(timestamp) AT TIME ZONE 'UTC')::date, 'YYYYMMDD'),'<NULL>')
+                )) AS deviceid_h,
                 deviceid,latitude,longitude,timestamp
             FROM {stg_src}
         );
@@ -86,12 +97,12 @@ def data_dedupl(cur, stg_dest, stg_src, *, temptbl=True):
             CREATE {tempflag} TABLE {stg_dest} AS
             WITH q AS (
                 SELECT
-                    _h,deviceid,latitude,longitude,timestamp,
+                    _h,deviceid_h,deviceid,latitude,longitude,timestamp,
                     ROW_NUMBER() OVER(PARTITION BY _h) AS _rn
                 FROM {stg_src}
             )
             SELECT
-                _h,deviceid,latitude,longitude,timestamp
+                _h,deviceid_h,deviceid,latitude,longitude,timestamp
             FROM q
             WHERE _rn=1;
         """

@@ -131,6 +131,8 @@ def data_route_and_merge(cur, *, data_table, archive_table, quarantine_table, st
     def execute_merge(*, dst_table, deviceid_col='deviceid', dataok=True):
         # Note: On match: updating data values since there could be changes to the data at a later time
         sql = psycopg.sql.SQL(
+            # One can also load this query from an .sql file in the code directory
+            # and load it using 'importlib.resources'
             """
             WITH q AS(
                 MERGE
@@ -165,9 +167,11 @@ def data_route_and_merge(cur, *, data_table, archive_table, quarantine_table, st
         res_m = cur.fetchone()
         return res_m
 
-    res_m   = execute_merge(dst_table=data_table,       dataok=True)
-    res_m_a = execute_merge(dst_table=archive_table,    dataok=True, deviceid_col='deviceid_h')
-    res_m_q = execute_merge(dst_table=quarantine_table, dataok=False)
+    settings = get_settings()
+    res_m   = execute_merge(dst_table=data_table,        dataok=True)
+    if settings.use_archive:
+        res_m_a = execute_merge(dst_table=archive_table, dataok=True, deviceid_col='deviceid_h')
+    res_m_q = execute_merge(dst_table=quarantine_table,  dataok=False)
     n_q = res_m_q['n_inserts']+res_m_q['n_updates']
 
     return res_m['n_inserts'],res_m['n_updates'],n_q

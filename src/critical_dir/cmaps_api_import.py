@@ -128,9 +128,9 @@ def data_add_id_run(*, cur, stg, id_run):
     cur.execute(f'UPDATE {stg} SET id_run=%s;', (id_run,))
 
 def data_route_and_merge(cur, *, data_table, archive_table, quarantine_table, stg_table):
-    def execute_merge(*, dst_table, deviceid_suffix='', dataok=True):
+    def execute_merge(*, dst_table, deviceid_col='deviceid', dataok=True):
         # Note: On match: updating data values since there could be changes to the data at a later time
-        sql = \
+        sql = psycopg.sql.SQL(
             """
             WITH q AS(
                 MERGE
@@ -141,9 +141,9 @@ def data_route_and_merge(cur, *, data_table, archive_table, quarantine_table, st
                 ON
                     dst._h=src._h
                 WHEN MATCHED THEN
-                    UPDATE SET id_run=src.id_run, deviceid{deviceid_suffix}=src.deviceid{deviceid_suffix}, latitude=src.latitude, longitude=src.longitude, timestamp=src.timestamp
+                    UPDATE SET id_run=src.id_run, {deviceid_col}=src.{deviceid_col}, latitude=src.latitude, longitude=src.longitude, timestamp=src.timestamp
                 WHEN NOT MATCHED THEN
-                    INSERT VALUES (_h,id_run,deviceid{deviceid_suffix},latitude,longitude,timestamp)
+                    INSERT VALUES (_h,id_run,{deviceid_col},latitude,longitude,timestamp)
                 RETURNING
                     -- merge_action() is new in PostgreSQL v18
                     dst._h, merge_action() AS action
@@ -152,7 +152,12 @@ def data_route_and_merge(cur, *, data_table, archive_table, quarantine_table, st
                 COUNT(*) FILTER (WHERE action='INSERT') AS n_inserts,
                 COUNT(*) FILTER (WHERE action='UPDATE') AS n_updates
             FROM q;
-            """.format(dst_table=dst_table, stg_table=stg_table, deviceid_suffix=deviceid_suffix)
+            """
+        ).format(
+            dst_table=psycopg.sql.Identifier(dst_table),
+            stg_table=psycopg.sql.Identifier(stg_table),
+            deviceid_col=psycopg.sql.Identifier(deviceid_col)
+        )
         cur.execute(
             sql,
             (int(dataok),) # explicit type casting to int avoids error "psycopg.errors.UndefinedFunction: operator does not exist: integer = boolean"
@@ -161,7 +166,7 @@ def data_route_and_merge(cur, *, data_table, archive_table, quarantine_table, st
         return res_m
 
     res_m   = execute_merge(dst_table=data_table,       dataok=True)
-    res_m_a = execute_merge(dst_table=archive_table,    dataok=True, deviceid_suffix='_h')
+    res_m_a = execute_merge(dst_table=archive_table,    dataok=True, deviceid_col='deviceid_h')
     res_m_q = execute_merge(dst_table=quarantine_table, dataok=False)
     n_q = res_m_q['n_inserts']+res_m_q['n_updates']
 
@@ -207,7 +212,7 @@ class PipelineResult:
 
 def run_pipeline(cur,settings,data,t0, *, temptbl=True):
     # create unique names for data staging steps
-    str_t0 = t0.strftime('%Y%m%dT%H%M%S')
+    str_t0 = t0.strftime('%Y%m%dt%H%M%S') # using lower-case 't' here (unquoted table names are converted to lower case by PostgreSQL)
     stg_table = 'stg_'+str_t0
     stg_table_hashed = stg_table + '_h'
     stg_table_dedupl = stg_table + '_d'

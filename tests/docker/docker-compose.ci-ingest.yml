@@ -1,11 +1,13 @@
 x-ing-env: &ing-env
-  # Note: do not quote the DSN.
+  # Note: do not put DSN in quotes.
   CRITICAL_DIR_PG_DSN: postgres://testuser:testpwd@pgdatabase:5432/testdb
   CRITICAL_DIR_DATATABLE: criticalmaps_data_test
   CRITICAL_DIR_ARCHIVETABLE: criticalmaps_data_archive_test
   CRITICAL_DIR_QUARANTINETABLE: criticalmaps_data_quarantine_test
   CRITICAL_DIR_STATSTABLE: criticalmaps_stats_test
   CRITICAL_DIR_REDIS_HOST: redis
+  # Important: as most of the tests use the default value of 'use_archive' parameter
+  # (as defined in settings.py), it is not assigned here.
 
   # Remember: These paths to be specified as seen from inside the running Docker container.
   CRITICAL_DIR_IMG_DIR: /app/objs
@@ -63,7 +65,12 @@ services:
     volumes:
       - stor:/stor
 
-
+  ##########################################################################
+  # TESTS                                                                  #
+  # Run the ingestion software multiple times, writing to different tables #
+  # in the database. Analysis is then done by tests written using pytest.  #
+  # These tests also test the default value of parameter 'use_archive'.    #
+  ##########################################################################
   cdir_ing:
     <<: *ing
     environment:
@@ -78,6 +85,47 @@ services:
         condition: service_completed_successfully
       pgdatabase:
         condition: service_healthy
+
+  ### Test that ingestion script can be adjusted with 'use_archive' parameter ###
+  cdir_ing_archoff:
+    <<: *ing
+    environment:
+      <<: *ing-env
+      CRITICAL_DIR_DATATABLE: criticalmaps_data_test_archiveoff
+      CRITICAL_DIR_ARCHIVETABLE: criticalmaps_data_archive_test_archiveoff
+      CRITICAL_DIR_QUARANTINETABLE: criticalmaps_data_quarantine_test_archiveoff
+      CRITICAL_DIR_STATSTABLE: criticalmaps_stats_test_archiveoff
+      CRITICAL_DIR_USE_ARCHIVE: off
+    # append test-specific argument to ENTRYPOINT given in Dockerfile
+    command:
+      - --test_one_request
+      # !file path as seen from inside Docker container!
+      - --override_api_url=file:///app/tests/ing-test-jsons/ok1.json
+    depends_on:
+      init_adjust_permissions:
+        condition: service_completed_successfully
+      pgdatabase:
+        condition: service_healthy
+  cdir_ing_archon:
+    <<: *ing
+    environment:
+      <<: *ing-env
+      CRITICAL_DIR_DATATABLE: criticalmaps_data_test_archiveon
+      CRITICAL_DIR_ARCHIVETABLE: criticalmaps_data_archive_test_archiveon
+      CRITICAL_DIR_QUARANTINETABLE: criticalmaps_data_quarantine_test_archiveon
+      CRITICAL_DIR_STATSTABLE: criticalmaps_stats_test_archiveon
+      CRITICAL_DIR_USE_ARCHIVE: on
+    # append test-specific argument to ENTRYPOINT given in Dockerfile
+    command:
+      - --test_one_request
+      # !file path as seen from inside Docker container!
+      - --override_api_url=file:///app/tests/ing-test-jsons/ok1.json
+    depends_on:
+      init_adjust_permissions:
+        condition: service_completed_successfully
+      pgdatabase:
+        condition: service_healthy
+
 
   ### Test of Idempotency ###
   # Run the Docker image twice against the same table.
@@ -226,6 +274,10 @@ services:
       init_adjust_permissions:
         condition: service_completed_successfully
       cdir_ing:
+        condition: service_completed_successfully
+      cdir_ing_archoff:
+        condition: service_completed_successfully
+      cdir_ing_archon:
         condition: service_completed_successfully
       cdir_ing_idempotency1:
         condition: service_completed_successfully

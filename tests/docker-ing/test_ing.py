@@ -63,6 +63,18 @@ def test_analyze_ingestion(capsys):
     # compare data and archive tables (function returns number of rows in agreement)
     assert 8==helper_count_identical_rows_data_and_archive(cur, tbl_data=settings.datatable, tbl_archive=settings.archivetable)
 
+def test_analyze_ingestion_archive():
+    conn = get_db_conn()
+    # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
+    cur = conn.cursor(row_factory=dict_row)
+    # FIXME: hard-coded table names
+    assert 8==helper_get_nrows(cur, 'criticalmaps_data_archive_test_archiveon')
+    assert 0==helper_get_nrows(cur, 'criticalmaps_data_archive_test_archiveoff')
+    # check that there was a run of the ingestion script (especially important in the 'off' case)
+    assert 1==helper_get_nrows(cur, 'criticalmaps_stats_test_archiveon')
+    assert 1==helper_get_nrows(cur, 'criticalmaps_stats_test_archiveoff')
+
+
 def test_analyze_idempotence(capsys):
     """
     Evaluates the test for idempotence.

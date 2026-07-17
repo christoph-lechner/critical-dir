@@ -2,6 +2,7 @@ x-ing-env: &ing-env
   # Note: do not quote the DSN.
   CRITICAL_DIR_PG_DSN: postgres://testuser:testpwd@pgdatabase:5432/testdb
   CRITICAL_DIR_DATATABLE: criticalmaps_data_test
+  CRITICAL_DIR_ARCHIVETABLE: criticalmaps_data_archive_test
   CRITICAL_DIR_QUARANTINETABLE: criticalmaps_data_quarantine_test
   CRITICAL_DIR_STATSTABLE: criticalmaps_stats_test
   CRITICAL_DIR_REDIS_HOST: redis
@@ -86,6 +87,7 @@ services:
     environment:
       <<: *ing-env
       CRITICAL_DIR_DATATABLE: criticalmaps_data_test_idempotency
+      CRITICAL_DIR_ARCHIVETABLE: criticalmaps_data_archive_test_idempotency
       CRITICAL_DIR_QUARANTINETABLE: criticalmaps_data_quarantine_test_idempotency
       CRITICAL_DIR_STATSTABLE: criticalmaps_stats_test_idempotency
     # append test-specific argument to ENTRYPOINT given in Dockerfile
@@ -105,6 +107,7 @@ services:
       <<: *ing-env
       # same as above
       CRITICAL_DIR_DATATABLE: criticalmaps_data_test_idempotency
+      CRITICAL_DIR_ARCHIVETABLE: criticalmaps_data_archive_test_idempotency
       CRITICAL_DIR_QUARANTINETABLE: criticalmaps_data_quarantine_test_idempotency
       CRITICAL_DIR_STATSTABLE: criticalmaps_stats_test_idempotency
     # append test-specific argument to ENTRYPOINT given in Dockerfile
@@ -128,6 +131,7 @@ services:
     environment:
       <<: *ing-env
       CRITICAL_DIR_DATATABLE: criticalmaps_data_test_badlat
+      CRITICAL_DIR_ARCHIVETABLE: criticalmaps_data_archive_test_badlat
       CRITICAL_DIR_QUARANTINETABLE: criticalmaps_data_quarantine_test_badlat
       CRITICAL_DIR_STATSTABLE: criticalmaps_stats_test_badlat
     # append test-specific argument to ENTRYPOINT given in Dockerfile
@@ -146,6 +150,7 @@ services:
     environment:
       <<: *ing-env
       CRITICAL_DIR_DATATABLE: criticalmaps_data_test_badlng
+      CRITICAL_DIR_ARCHIVETABLE: criticalmaps_data_archive_test_badlng
       CRITICAL_DIR_QUARANTINETABLE: criticalmaps_data_quarantine_test_badlng
       CRITICAL_DIR_STATSTABLE: criticalmaps_stats_test_badlng
     # append test-specific argument to ENTRYPOINT given in Dockerfile
@@ -165,6 +170,7 @@ services:
     environment:
       <<: *ing-env
       CRITICAL_DIR_DATATABLE: criticalmaps_data_test_badurl
+      CRITICAL_DIR_ARCHIVETABLE: criticalmaps_data_archive_test_badurl
       CRITICAL_DIR_QUARANTINETABLE: criticalmaps_data_quarantine_test_badurl
       CRITICAL_DIR_STATSTABLE: criticalmaps_stats_test_badurl
     # Need to clear ENTRYPOINT given in Dockerfile
@@ -196,6 +202,7 @@ services:
       # Note: do not quote the DSN.
       - CRITICAL_DIR_PG_DSN=postgres://testuser:testpwd@pgdatabase:5432/testdb
       - CRITICAL_DIR_DATATABLE=criticalmaps_data_test
+      - CRITICAL_DIR_ARCHIVETABLE=criticalmaps_data_archive_test
       - CRITICAL_DIR_QUARANTINETABLE=criticalmaps_data_quarantine_test
       - CRITICAL_DIR_STATSTABLE=criticalmaps_stats_test
       - CRITICAL_DIR_REDIS_HOST=redis

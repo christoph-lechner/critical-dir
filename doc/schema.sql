@@ -53,6 +53,22 @@ CREATE TABLE criticalmaps_data (
 
 -- NOTE: if you change the definition of this table, be sure to update
 -- the data ingestion script
+CREATE TABLE criticalmaps_data_archive (
+    _h TEXT,
+    -- NOTE: there is no "NOT NULL" in the following row definition, so "NULL" satisfies the constraint
+    id_run BIGINT REFERENCES criticalmaps_stats(id),
+
+    deviceid_h TEXT,
+    latitude FLOAT,
+    longitude FLOAT,
+    timestamp INT,
+    ts_entry_creation TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE (_h)
+);
+
+
+-- NOTE: if you change the definition of this table, be sure to update
+-- the data ingestion script
 CREATE TABLE criticalmaps_data_quarantine (
     _h TEXT,
     -- NOTE: there is no "NOT NULL" in the following row definition, so "NULL" satisfies the constraint

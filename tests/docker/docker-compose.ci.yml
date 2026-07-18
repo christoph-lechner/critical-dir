@@ -6,6 +6,7 @@ x-env: &env
   # Note: do not quote the DSN.
   CRITICAL_DIR_PG_DSN: postgres://testuser:testpwd@pgdatabase:5432/testdb
   CRITICAL_DIR_DATATABLE: criticalmaps_data_test
+  CRITICAL_DIR_ARCHIVETABLE: criticalmaps_data_archive_test
   CRITICAL_DIR_QUARANTINETABLE: criticalmaps_data_quarantine_test
   # stats table is not relevant for API server, but parameters is needed as of 2026-06-29
   CRITICAL_DIR_STATSTABLE: criticalmaps_stats_test

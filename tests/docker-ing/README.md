@@ -1,3 +1,4 @@
+# Tests of Ingestion
 This directory contains the `pytest` input files for **evaluating** the tests of ingestion process using Docker.
 The corresponding docker-compose file is currently stored in a different directory, as are the files needed to prepare the SQL DB for the tests.
 (There are also tests of some important data manipulation steps using `pytest`, they are described elsewhere.)

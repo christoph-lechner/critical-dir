@@ -19,6 +19,7 @@ def helper_prepare_and_run(cur, data):
 
             statstable='criticalmaps_stats',
             datatable='criticalmaps_data',
+            archivetable='criticalmaps_data_archive',
             quarantinetable='criticalmaps_data_quarantine',
     )
     t0 = datetime.datetime.now()

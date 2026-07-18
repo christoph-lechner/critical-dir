@@ -1,4 +1,4 @@
-# README.md
+# Tests of API Server
 This directory contains tests that are used to verify that the API server runs after building the Docker image.
 After building the image, the tests are executed **in the directory layout of the image** with `pytest`.
 

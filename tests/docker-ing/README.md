@@ -1,3 +1,4 @@
+# Tests of Ingestion
 This directory contains the `pytest` input files for **evaluating** the tests of ingestion process using Docker.
 The corresponding docker-compose file is currently stored in a different directory, as are the files needed to prepare the SQL DB for the tests.
 (There are also tests of some important data manipulation steps using `pytest`, they are described elsewhere.)
@@ -29,8 +30,12 @@ Tests reaction to issues with API requests.
 For the test to pass, there has to be a single entry in the table informing us about the type of exception and further details.
 
 ## Useful commands
+(See also [here](../docker/README.md) for more infos)
 ```
 docker compose -f ./tests/docker/docker-compose.ci-ingest.yml build
 docker compose -f ./tests/docker/docker-compose.ci-ingest.yml run --rm tests
+
+# if needed, you can inspect the database contents here
+
 docker compose -f ./tests/docker/docker-compose.ci-ingest.yml down -v
 ```

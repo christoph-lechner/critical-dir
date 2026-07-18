@@ -6,12 +6,16 @@ from functools import cache
 class Settings(BaseSettings):
     pg_dsn: PostgresDsn
 
+    redis_host: str = 'localhost'
+
     # no defaults for table names, forces user to assign them and ensures correct variable names in .env files
     datatable: str
+    archivetable: str
     quarantinetable: str
     statstable: str
 
-    redis_host: str = 'localhost'
+    # fill the 'archive' data table?
+    use_archive: bool = True
 
     img_dir: Path
     api_downloader_json_outdir: Path

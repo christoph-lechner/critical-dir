@@ -66,13 +66,24 @@ def prepare_stg_table(cur, stg_table, *, temptbl=True):
 def data_add_hashes(cur, stg_dest, stg_src, *, temptbl=True):
     """
     "stg_dest" is name of temporary destination table that is to be created by this function
+
+    This function adds two different hashes:
+    . a hash for deduplication
+    . a hashed deviceid (together with date in timestamp) for archive table.
     """
     tempflag = 'TEMPORARY' if temptbl else ''
     cur.execute(
         f"""
         CREATE {tempflag} TABLE {stg_dest} AS (
             SELECT
+                -- Hash for deduplication
                 MD5(CONCAT(CONCAT(deviceid,'_'),'-',CONCAT(timestamp,'_'))) AS _h,
+                -- Hash for archive table
+                MD5( CONCAT(
+                    COALESCE(deviceid,'<NULL>'), '-',
+                    -- For stable, locale-independent representation of the date extracted from the epoch: (i) forcing timezone UTC; (ii) using 'to_char' 
+                    COALESCE(TO_CHAR((TO_TIMESTAMP(timestamp) AT TIME ZONE 'UTC')::date, 'YYYYMMDD'),'<NULL>')
+                )) AS deviceid_h,
                 deviceid,latitude,longitude,timestamp
             FROM {stg_src}
         );
@@ -86,12 +97,12 @@ def data_dedupl(cur, stg_dest, stg_src, *, temptbl=True):
             CREATE {tempflag} TABLE {stg_dest} AS
             WITH q AS (
                 SELECT
-                    _h,deviceid,latitude,longitude,timestamp,
+                    _h,deviceid_h,deviceid,latitude,longitude,timestamp,
                     ROW_NUMBER() OVER(PARTITION BY _h) AS _rn
                 FROM {stg_src}
             )
             SELECT
-                _h,deviceid,latitude,longitude,timestamp
+                _h,deviceid_h,deviceid,latitude,longitude,timestamp
             FROM q
             WHERE _rn=1;
         """
@@ -116,11 +127,13 @@ def data_add_id_run(*, cur, stg, id_run):
     cur.execute(f'ALTER TABLE {stg} ADD COLUMN id_run BIGINT;')
     cur.execute(f'UPDATE {stg} SET id_run=%s;', (id_run,))
 
-def data_route_and_merge(cur, *, data_table, quarantine_table, stg_table):
-    def execute_merge(*, dst_table, dataok=True):
+def data_route_and_merge(cur, *, data_table, archive_table, quarantine_table, stg_table, use_archive=False):
+    def execute_merge(*, dst_table, deviceid_col='deviceid', dataok=True):
         # Note: On match: updating data values since there could be changes to the data at a later time
-        cur.execute(
-            f"""
+        sql = psycopg.sql.SQL(
+            # One can also load this query from an .sql file in the code directory
+            # and load it using 'importlib.resources'
+            """
             WITH q AS(
                 MERGE
                 INTO
@@ -130,9 +143,9 @@ def data_route_and_merge(cur, *, data_table, quarantine_table, stg_table):
                 ON
                     dst._h=src._h
                 WHEN MATCHED THEN
-                    UPDATE SET id_run=src.id_run,deviceid=src.deviceid, latitude=src.latitude, longitude=src.longitude, timestamp=src.timestamp
+                    UPDATE SET id_run=src.id_run, {deviceid_col}=src.{deviceid_col}, latitude=src.latitude, longitude=src.longitude, timestamp=src.timestamp
                 WHEN NOT MATCHED THEN
-                    INSERT VALUES (_h,id_run,deviceid,latitude,longitude,timestamp)
+                    INSERT VALUES (_h,id_run,{deviceid_col},latitude,longitude,timestamp)
                 RETURNING
                     -- merge_action() is new in PostgreSQL v18
                     dst._h, merge_action() AS action
@@ -141,14 +154,24 @@ def data_route_and_merge(cur, *, data_table, quarantine_table, stg_table):
                 COUNT(*) FILTER (WHERE action='INSERT') AS n_inserts,
                 COUNT(*) FILTER (WHERE action='UPDATE') AS n_updates
             FROM q;
-            """,
+            """
+        ).format(
+            dst_table=psycopg.sql.Identifier(dst_table),
+            stg_table=psycopg.sql.Identifier(stg_table),
+            deviceid_col=psycopg.sql.Identifier(deviceid_col)
+        )
+        cur.execute(
+            sql,
             (int(dataok),) # explicit type casting to int avoids error "psycopg.errors.UndefinedFunction: operator does not exist: integer = boolean"
         )
         res_m = cur.fetchone()
         return res_m
 
-    res_m   = execute_merge(dst_table=data_table,       dataok=True)
-    res_m_q = execute_merge(dst_table=quarantine_table, dataok=False)
+    # settings = get_settings() # this fails when running tests (there is no '.env' file with valid settings, so pydantic validation is not successful)
+    res_m   = execute_merge(dst_table=data_table,        dataok=True)
+    if use_archive:
+        res_m_a = execute_merge(dst_table=archive_table, dataok=True, deviceid_col='deviceid_h')
+    res_m_q = execute_merge(dst_table=quarantine_table,  dataok=False)
     n_q = res_m_q['n_inserts']+res_m_q['n_updates']
 
     return res_m['n_inserts'],res_m['n_updates'],n_q
@@ -193,7 +216,7 @@ class PipelineResult:
 
 def run_pipeline(cur,settings,data,t0, *, temptbl=True):
     # create unique names for data staging steps
-    str_t0 = t0.strftime('%Y%m%dT%H%M%S')
+    str_t0 = t0.strftime('%Y%m%dt%H%M%S') # using lower-case 't' here (unquoted table names are converted to lower case by PostgreSQL)
     stg_table = 'stg_'+str_t0
     stg_table_hashed = stg_table + '_h'
     stg_table_dedupl = stg_table + '_d'
@@ -219,8 +242,10 @@ def run_pipeline(cur,settings,data,t0, *, temptbl=True):
     nrows_inserts,nrows_updates,nrows_quarantine = data_route_and_merge(
             cur,
             data_table=settings.datatable,
+            archive_table=settings.archivetable,
             quarantine_table=settings.quarantinetable,
-            stg_table=stg_table_dedupl
+            stg_table=stg_table_dedupl,
+            use_archive=settings.use_archive,
     )
 
     return PipelineResult(

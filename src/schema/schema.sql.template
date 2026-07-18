@@ -31,15 +31,15 @@ CREATE TABLE criticalmaps_stats{{ id_project }}(
 	nrows_quarantine INT
 );
 
-{% macro def_table(name_extras) %}
+{% macro def_table(name_suffix, devid_suffix="") %}
 -- NOTE: if you change the definition of this table, be sure to update
 -- the data ingestion script
-CREATE TABLE criticalmaps_data{{ name_extras }}{{ id_project }} (
+CREATE TABLE criticalmaps_data{{ name_suffix }}{{ id_project }} (
     _h TEXT,
     -- NOTE: there is no "NOT NULL" in the following row definition, so "NULL" satisfies the constraint
     id_run BIGINT REFERENCES criticalmaps_stats{{ id_project }}(id),
 
-    deviceid TEXT,
+    deviceid{{ devid_suffix }} TEXT,
     latitude FLOAT,
     longitude FLOAT,
     timestamp INT,
@@ -50,6 +50,7 @@ CREATE TABLE criticalmaps_data{{ name_extras }}{{ id_project }} (
 
 {# data table and quarantine table have identical defintion #}
 {{ def_table("") }}
+{{ def_table("_archive", "_h") }}
 {{ def_table("_quarantine") }}
 
 {% if create_indices %}

@@ -127,7 +127,7 @@ def data_add_id_run(*, cur, stg, id_run):
     cur.execute(f'ALTER TABLE {stg} ADD COLUMN id_run BIGINT;')
     cur.execute(f'UPDATE {stg} SET id_run=%s;', (id_run,))
 
-def data_route_and_merge(cur, *, data_table, archive_table, quarantine_table, stg_table):
+def data_route_and_merge(cur, *, data_table, archive_table, quarantine_table, stg_table, use_archive=False):
     def execute_merge(*, dst_table, deviceid_col='deviceid', dataok=True):
         # Note: On match: updating data values since there could be changes to the data at a later time
         sql = psycopg.sql.SQL(
@@ -167,9 +167,9 @@ def data_route_and_merge(cur, *, data_table, archive_table, quarantine_table, st
         res_m = cur.fetchone()
         return res_m
 
-    settings = get_settings()
+    # settings = get_settings() # this fails when running tests (there is no '.env' file with valid settings, so pydantic validation is not successful)
     res_m   = execute_merge(dst_table=data_table,        dataok=True)
-    if settings.use_archive:
+    if use_archive:
         res_m_a = execute_merge(dst_table=archive_table, dataok=True, deviceid_col='deviceid_h')
     res_m_q = execute_merge(dst_table=quarantine_table,  dataok=False)
     n_q = res_m_q['n_inserts']+res_m_q['n_updates']
@@ -244,7 +244,8 @@ def run_pipeline(cur,settings,data,t0, *, temptbl=True):
             data_table=settings.datatable,
             archive_table=settings.archivetable,
             quarantine_table=settings.quarantinetable,
-            stg_table=stg_table_dedupl
+            stg_table=stg_table_dedupl,
+            use_archive=settings.use_archive,
     )
 
     return PipelineResult(

@@ -1,0 +1,34 @@
+## Test command to study the issue
+Before running the test command, you have to start the PostgreSQL database, as in the file `.github/workflows/run_pytest.yaml`.
+Then the test command (also from the `.yaml` file) used is:
+```
+env TESTS_PG_DSN=postgres://testuser:testpwd@localhost:15432/testdb TESTS_DO_NOT_DROP=1 pytest tests/test_ing_datamanip.py::test_data_nodata
+```
+
+## `86ecfec` is OK (after adding the missing parameter `archivetable` to `tests/test_ing_datamanip.py`)
+```
+>       super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+E       archivetable
+E         Field required [type=missing, input_value={'pg_dsn': 'postgres://de...oader_json_outdir': '/'}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.13/v/missing
+
+venv_scratch/lib/python3.10/site-packages/pydantic_settings/main.py:247: ValidationError
+```
+
+## `ff50b39` is broken
+**The key info was the backtrace printed above the exception raised by `pydantic`.**
+
+The error message is (note the `input_value={}`), as the `.env` file was renamed.
+```
+>       super().__init__(**__pydantic_self__.__class__._settings_build_values(sources, init_kwargs))
+E       pydantic_core._pydantic_core.ValidationError: 7 validation errors for Settings
+E       pg_dsn
+E         Field required [type=missing, input_value={}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.13/v/missing
+E       datatable
+E         Field required [type=missing, input_value={}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.13/v/missing
+[..]
+venv_scratch/lib/python3.10/site-packages/pydantic_settings/main.py:247: ValidationError
+```

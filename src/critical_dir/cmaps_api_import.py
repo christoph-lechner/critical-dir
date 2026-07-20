@@ -176,6 +176,19 @@ def data_route_and_merge(cur, *, data_table, archive_table, quarantine_table, st
 
     return res_m['n_inserts'],res_m['n_updates'],n_q
 
+def data_delete_old(cur, *, data_table):
+    sql = psycopg.sql.SQL(
+        # One can also load this query from an .sql file in the code directory
+        # and load it using 'importlib.resources'
+        """
+        DELETE FROM {data_table} WHERE EXTRACT(EPOCH FROM NOW())-timestamp >= 8*3600;
+        """
+    ).format(
+        data_table=psycopg.sql.Identifier(data_table),
+    )
+    cur.execute(sql)
+    ndel = cur.rowcount
+    return ndel
 
 #####
 
@@ -247,6 +260,8 @@ def run_pipeline(cur,settings,data,t0, *, temptbl=True):
             stg_table=stg_table_dedupl,
             use_archive=settings.use_archive,
     )
+    # finally, expire old entries from the data table, but NOT from the archive table
+    nrows_deleted = data_delete_old(cur, data_table=settings.datatable)
 
     return PipelineResult(
         id_run,

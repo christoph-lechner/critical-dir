@@ -21,15 +21,18 @@ x-ing: &ing
   # !Note environment not specified here, it will be added when assembling everything!
   volumes:
     - stor:/stor
+    - inputfiles:/inputfiles:ro
   healthcheck:
     disable: true
 
-# Named volume for sharing downloaded data files between containers for further examination,
-# These are persistent, use
+# Named volumes are persistent, use
 #    "docker compose down -v"
 # to drop data
 volumes:
+  # Named volume for sharing downloaded data files between containers for further examination
   stor:
+  # Named volume holding input files for ingestion tests
+  inputfiles:
 
 services:
   pgdatabase:
@@ -54,7 +57,7 @@ services:
       timeout: 5s
       retries: 10
 
-  # Adjust permissions of data directory -> short-lived service
+  # short-lived service: Adjust permissions of data directory
   init_adjust_permissions:
     image: alpine
     command:
@@ -64,6 +67,22 @@ services:
         chmod 0777 /stor
     volumes:
       - stor:/stor
+
+  # short-lived service: Prepare JSON input files for tests
+  init_prepare_jsons:
+    image: ubuntu
+    command:
+      - sh
+      - -c
+      - |
+        cp /templ/* /inputfiles &&
+        cd /inputfiles &&
+        ./substitute_tnow.sh &&
+        ls -l
+    volumes:
+      - inputfiles:/inputfiles
+      # JSON templates
+      - "../ing-test-jsons:/templ/"
 
   ##########################################################################
   # TESTS                                                                  #
@@ -79,9 +98,11 @@ services:
     command:
       - --test_one_request
       # !file path as seen from inside Docker container!
-      - --override_api_url=file:///app/tests/ing-test-jsons/ok1.json
+      - --override_api_url=file:///inputfiles/ok1.json
     depends_on:
       init_adjust_permissions:
+        condition: service_completed_successfully
+      init_prepare_jsons:
         condition: service_completed_successfully
       pgdatabase:
         condition: service_healthy
@@ -100,9 +121,11 @@ services:
     command:
       - --test_one_request
       # !file path as seen from inside Docker container!
-      - --override_api_url=file:///app/tests/ing-test-jsons/ok1.json
+      - --override_api_url=file:///inputfiles/ok1.json
     depends_on:
       init_adjust_permissions:
+        condition: service_completed_successfully
+      init_prepare_jsons:
         condition: service_completed_successfully
       pgdatabase:
         condition: service_healthy
@@ -119,9 +142,11 @@ services:
     command:
       - --test_one_request
       # !file path as seen from inside Docker container!
-      - --override_api_url=file:///app/tests/ing-test-jsons/ok1.json
+      - --override_api_url=file:///inputfiles/ok1.json
     depends_on:
       init_adjust_permissions:
+        condition: service_completed_successfully
+      init_prepare_jsons:
         condition: service_completed_successfully
       pgdatabase:
         condition: service_healthy
@@ -142,9 +167,11 @@ services:
     command:
       - --test_one_request
       # !file path as seen from inside Docker container!
-      - --override_api_url=file:///app/tests/ing-test-jsons/ok1.json
+      - --override_api_url=file:///inputfiles/ok1.json
     depends_on:
       init_adjust_permissions:
+        condition: service_completed_successfully
+      init_prepare_jsons:
         condition: service_completed_successfully
       pgdatabase:
         condition: service_healthy
@@ -162,9 +189,11 @@ services:
     command:
       - --test_one_request
       # !file path as seen from inside Docker container!
-      - --override_api_url=file:///app/tests/ing-test-jsons/ok1.json
+      - --override_api_url=file:///inputfiles/ok1.json
     depends_on:
       init_adjust_permissions:
+        condition: service_completed_successfully
+      init_prepare_jsons:
         condition: service_completed_successfully
       pgdatabase:
         condition: service_healthy
@@ -186,9 +215,11 @@ services:
     command:
       - --test_one_request
       # !file path as seen from inside Docker container!
-      - --override_api_url=file:///app/tests/ing-test-jsons/bad-invalid-lat.json
+      - --override_api_url=file:///inputfiles/bad-invalid-lat.json
     depends_on:
       init_adjust_permissions:
+        condition: service_completed_successfully
+      init_prepare_jsons:
         condition: service_completed_successfully
       pgdatabase:
         condition: service_healthy
@@ -205,9 +236,11 @@ services:
     command:
       - --test_one_request
       # !file path as seen from inside Docker container!
-      - --override_api_url=file:///app/tests/ing-test-jsons/bad-invalid-lng.json
+      - --override_api_url=file:///inputfiles/bad-invalid-lng.json
     depends_on:
       init_adjust_permissions:
+        condition: service_completed_successfully
+      init_prepare_jsons:
         condition: service_completed_successfully
       pgdatabase:
         condition: service_healthy
@@ -272,6 +305,8 @@ services:
       pgdatabase:
         condition: service_healthy
       init_adjust_permissions:
+        condition: service_completed_successfully
+      init_prepare_jsons:
         condition: service_completed_successfully
       cdir_ing:
         condition: service_completed_successfully

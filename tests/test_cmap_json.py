@@ -16,14 +16,14 @@ def test_interface():
     Basic interface checks
     """
     # we expect the function to return a list
-    r = load_cmap_jsonfile( h_getpath('ok1.json') )
+    r = load_cmap_jsonfile( h_getpath('ok1-fixed-timestamps.json') )
     assert isinstance(r, list)
 
 def test_fileload_ok():
     """
     Can we load a good file?
     """
-    data = load_cmap_jsonfile( h_getpath('ok1.json') )
+    data = load_cmap_jsonfile( h_getpath('ok1-fixed-timestamps.json') )
     assert isinstance(data, list)
     assert len(data)==8
 
@@ -35,7 +35,7 @@ def test_fileload_check_data():
     """
     Verifies that data loaded from file matches file contents
     """
-    data = load_cmap_jsonfile( h_getpath('ok1.json') )
+    data = load_cmap_jsonfile( h_getpath('ok1-fixed-timestamps.json') )
     q = data[1]
     assert q.device=='28ef'
     assert q.latitude==53.123456
@@ -54,11 +54,11 @@ def test_cb_spatialfilter():
     cb_f_mock = Mock()
 
     # no spatial filter
-    data = load_cmap_jsonfile( h_getpath('ok1.json') )
+    data = load_cmap_jsonfile( h_getpath('ok1-fixed-timestamps.json') )
     assert len(data)==8
 
     # if our data has N objects, expect N calls of callback function
-    data = load_cmap_jsonfile( h_getpath('ok1.json'), spatial_filter=cb_f_mock )
+    data = load_cmap_jsonfile( h_getpath('ok1-fixed-timestamps.json'), spatial_filter=cb_f_mock )
     assert len(data)==cb_f_mock.call_count
     # check recorded call arguments
     from unittest.mock import call
@@ -67,11 +67,11 @@ def test_cb_spatialfilter():
     )
 
     # spatial filter accepting everything
-    data = load_cmap_jsonfile( h_getpath('ok1.json'), spatial_filter=cb_f_acceptall )
+    data = load_cmap_jsonfile( h_getpath('ok1-fixed-timestamps.json'), spatial_filter=cb_f_acceptall )
     assert len(data)==8
 
     # spatial filter rejecting everything
-    data = load_cmap_jsonfile( h_getpath('ok1.json'), spatial_filter=cb_f_rejectall )
+    data = load_cmap_jsonfile( h_getpath('ok1-fixed-timestamps.json'), spatial_filter=cb_f_rejectall )
     assert len(data)==0
 
 

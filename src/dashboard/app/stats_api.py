@@ -1,3 +1,4 @@
+import psycopg
 import pandas as pd
 import streamlit as st
 import plotly.express as px
@@ -51,7 +52,16 @@ from psycopg.rows import dict_row
 cur = conn.cursor(row_factory=dict_row)
 
 # get the needed data
-df = get_api_stats(cur)
+try:
+    df = get_api_stats(cur)
+except psycopg.errors.UndefinedTable as e:
+    st.warning(
+            f'''Got exception related to missing table. Remember that this dashboard requires additional data preparation.
+            The message is: "{str(e)}"
+            Stopping here.'''
+    )
+    st.stop()
+
 if len(df.index)==0:
     st.warning('Insufficient data in database')
     st.stop()

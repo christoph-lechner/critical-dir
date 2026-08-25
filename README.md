@@ -57,7 +57,7 @@ A reasonable starting point for selecting parameters could be
 - OS: Ubuntu Server 24.04 LTS
 - Docker
 - Python 3.10 or newer
-  - notable packages used: FastAPI, scikit-learn, psycopg, pytest
+  - notable packages used: FastAPI, scikit-learn, psycopg, pytest; streamlit (for the dashboard)
 - PostgreSQL v18
 - Redis
 - Test automatization using GitHub Actions, see [here](#cicd) for more information

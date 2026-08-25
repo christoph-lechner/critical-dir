@@ -1,4 +1,5 @@
 import streamlit as st
+import psycopg
 from db_conn import get_db_conn
 
 def get_ing_nfailedruns(cur):
@@ -88,7 +89,15 @@ st.write(
 #
 cols = st.columns(2)
 for ndays in [7,30]:
-    stats_hits = get_api_hits(cur, ndays=ndays)
+    try:
+        stats_hits = get_api_hits(cur, ndays=ndays)
+    except psycopg.errors.UndefinedTable as e:
+        st.warning(
+                f'''Got exception related to missing table. Remember that API statistics require additional data preparation.
+                The message is: "{str(e)}"
+                Stopping here.'''
+        )
+        st.stop() # stop here -> nothing remains to be done
     cols[0].metric(f'Hits "/clusters" (previous {ndays} days)', stats_hits['n_hits'], border=True)
     cols[1].metric(f'Reponse Time [ms] "/clusters" (q=0.9; previous {ndays} days)', stats_hits['response_time_p90'], format='%.2f', border=True)
 #

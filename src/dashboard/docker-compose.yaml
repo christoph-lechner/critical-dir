@@ -14,6 +14,11 @@ services:
       - "./app:/app:ro"
     ports:
       - 8501:8501
+    # for tests: to connect to remote PostgreSQL instance made available
+    # on host machine with SSH local port forwarding
+    # (but you still have to do "ssh -L 0.0.0.0:15432:127.0.0.1:5432" user@host", which exposes the port to the world)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
     #
     # Streamlit Default settings:

@@ -1,4 +1,5 @@
 # README
+**Project structure:** This repository contains the server-side code and serves as the main repository for the project. The other components of the project are maintained in separate repositories: [Web Client](https://github.com/christoph-lechner/critical-dir-map) and ["movie maker"](https://github.com/christoph-lechner/critical-dir-mm)
 
 ## Table of Contents
 - [Motivation and Solution](#motivation-and-solution)
@@ -71,12 +72,12 @@ Only images that successfully pass these tests are published to DockerHub.
 
 ## Running It
 ### Installation
-There are two alternative ways to run the API data import:
+There are two alternative ways to run the data ingestion:
 * running it using Docker container
 * installation in a fresh virtual environment
 
 **Docker images**
-There two `Dockerfile`s: one for API data import and one for the API server (more documentation will follow)
+There two `Dockerfile`s: one for data ingestion and one for the API server (more documentation will follow)
 
 **Installation in fresh virtual environment** using the commands:
 ```

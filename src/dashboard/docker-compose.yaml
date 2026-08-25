@@ -1,0 +1,39 @@
+services:
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: on-failure
+    # The following parameters are set in the .env file:
+    # - CRITICAL_DIR_PG_DSN
+    # - CRITICAL_DIR_DATATABLE
+    # - CRITICAL_DIR_QUARANTINETABLE
+    # - CRITICAL_DIR_STATSTABLE
+    env_file: .env
+    volumes:
+      - "./app:/app:ro"
+    ports:
+      - 8501:8501
+    # for tests: to connect to remote PostgreSQL instance made available
+    # on host machine with SSH local port forwarding
+    # (but you still have to do "ssh -L 0.0.0.0:15432:127.0.0.1:5432" user@host", which exposes the port to the world)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    #
+    # Streamlit Default settings:
+    # Use statistics are collected and the program displays warning
+    # "Collecting usage statistics. To deactivate, set browser.gatherUsageStats to false."
+    #
+    # The network debugging function of Firefox (or any other browser)
+    # reveals that streamlit is sending data to webhooks.fivetran.com.
+    # According to 
+    #   https://discuss.streamlit.io/t/why-does-streamlit-send-webhook-requests-to-fivetran-com/87353/2
+    # only analytics/telemetry data is sent, but let's switch it off anyhow.
+    # If you use config.toml file (has to be placed in home directory of user running it, which is a bit complicated with docker-ized program), the settings are
+    # [browser]
+    # gatherUsageStats = false
+
+    # But we can also do it on the command line
+    command: --browser.gatherUsageStats=False
+

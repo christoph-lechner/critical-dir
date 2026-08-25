@@ -1,5 +1,4 @@
 # README
-Christoph Lechner, 18 June 2026
 
 ## Table of Contents
 - [Motivation and Solution](#motivation-and-solution)
@@ -13,8 +12,8 @@ Christoph Lechner, 18 June 2026
   - [Running it](#running-it-1)
   - [Organization of URIs](#organization-of-uris)
   - [API Endpoints](#api-endpoints)
-- [Data Downloader](#data-downloader)
-  - [Health Monitoring](#health-monitoring)
+  - [Ingestion](#ingestion)
+    - [Health Monitoring](#health-monitoring)
 
 ## Motivation and Solution
 The open-source project [CriticalMaps](https://www.criticalmaps.net/) ([repositories on github](https://github.com/criticalmaps/)) enables participants of ["Critical Mass"](https://en.wikipedia.org/wiki/Critical_Mass_(cycling)) events to share their current location with others on an interactive map.
@@ -107,21 +106,21 @@ Here we list the API endpoints provided by the API server and the respective imp
 - `/clusters_demo` (GET): Delivers demo data (periodic motion of clusters). Mainly for development of client software.
 - `/health` (GET/HEAD): Endpoint for health checks. Is the API server reachable? This also performs a basic check of database 'freshness'. Returns HTTP status code 200 if checks are passed and HTTP status code 500 when something is out of order. Mainly for Docker, there is also a version that does not take DB freshness into consideration (`/health_no_freshness_check`, also GET/HEAD HTTP methods supported).
 
-## Data Downloader
-The data processed by this software project as basis for the provided maps is periodically obtained from the CriticalMaps API.
+### Ingestion
+The data processed by this software project to generate the provided maps is periodically obtained from the CriticalMaps API.
 
-For regular operation, Docker can be used. A `docker-compose.yaml` template file is available for customization. In addition, for building the Docker image, a `Dockerfile` is available. 
+For regular operation, Docker can be used. A `docker-compose.yaml` template file is available for customization. In addition, if you wish to build your own Docker image, a `Dockerfile` is available. 
 
-### Health Monitoring
-The downloader supports HTTP Health Monitoring.
-If you run it from the command line, pass the desired port to listen on to the program at start-up:
+**Health Monitoring**
+The ingestion script supports HTTP Health Monitoring.
+If you run it from the command line, pass the port for the built-in HTTP server to the program at start-up. For example:
 ```
 critical-dir-apiimport --status_port=22222
 ```
 
-To check the health status of the data downloader, you can use `curl`.
-The HTTP status code will be 200 if everything is ok, or 500 if no data could be downloaded for 900 seconds.
+To check the health status of the ingestion, you can use `curl`.
 ```
 $ curl --head http://localhost:22222/check
 ```
-In a production setting, this URL could be monitored with any URL monitor tool supporting GET or HEAD requests.
+The [HTTP status code](https://en.wikipedia.org/wiki/List_of_HTTP_status_codes) will be 200 if everything is ok, or 500 if no data could be downloaded for 900 seconds.
+In a production setting, this URL could be monitored with any URL monitoring tool supporting either GET or HEAD requests. This URL monitor could then be configured to send alert emails.

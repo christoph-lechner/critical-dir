@@ -24,9 +24,9 @@
      inkscape:document-units="mm"
      showgrid="true"
      inkscape:snap-text-baseline="true"
-     inkscape:zoom="3.4474205"
-     inkscape:cx="443.95513"
-     inkscape:cy="157.219"
+     inkscape:zoom="2.4376944"
+     inkscape:cx="203.26584"
+     inkscape:cy="116.0933"
      inkscape:window-width="2560"
      inkscape:window-height="1403"
      inkscape:window-x="0"
@@ -141,6 +141,34 @@
          d="M 0,0 5,-5 -12.5,0 5,5 Z"
          id="path1262-1" />
     </marker>
+    <marker
+       style="overflow:visible"
+       id="Arrow1Lstart-2"
+       refX="0"
+       refY="0"
+       orient="auto"
+       inkscape:stockid="Arrow1Lstart"
+       inkscape:isstock="true">
+      <path
+         transform="matrix(0.8,0,0,0.8,10,0)"
+         style="fill:context-stroke;fill-rule:evenodd;stroke:context-stroke;stroke-width:1pt"
+         d="M 0,0 5,-5 -12.5,0 5,5 Z"
+         id="path1259-9" />
+    </marker>
+    <marker
+       style="overflow:visible"
+       id="Arrow1Lend-1"
+       refX="0"
+       refY="0"
+       orient="auto"
+       inkscape:stockid="Arrow1Lend"
+       inkscape:isstock="true">
+      <path
+         transform="matrix(-0.8,0,0,-0.8,-10,0)"
+         style="fill:context-stroke;fill-rule:evenodd;stroke:context-stroke;stroke-width:1pt"
+         d="M 0,0 5,-5 -12.5,0 5,5 Z"
+         id="path1262-2" />
+    </marker>
   </defs>
   <g
      inkscape:label="Layer 1"
@@ -162,7 +190,7 @@
        id="rect1067-0"
        width="15"
        height="10.000001"
-       x="30"
+       x="75"
        y="10" />
     <path
        style="fill:none;stroke:#000000;stroke-width:0.265;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;marker-end:url(#Arrow1Lend)"
@@ -172,19 +200,40 @@
     <text
        xml:space="preserve"
        style="font-size:2.82222px;line-height:1.25;font-family:sans-serif;stroke-width:0.264583"
-       x="37"
+       x="35"
        y="49"
        id="text4535"><tspan
          sodipodi:role="line"
          style="font-size:2.82222px;text-align:center;text-anchor:middle;stroke-width:0.264583"
-         x="37"
+         x="35"
          y="49"
          id="tspan4539">CriticalMaps</tspan><tspan
          sodipodi:role="line"
          style="font-size:2.82222px;text-align:center;text-anchor:middle;stroke-width:0.264583"
-         x="37"
+         x="35"
          y="52.527775"
          id="tspan7753">API</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:2.82222px;line-height:1.25;font-family:sans-serif;stroke-width:0.264583"
+       x="35"
+       y="12"
+       id="text4535-0"><tspan
+         sodipodi:role="line"
+         style="font-size:2.82222px;text-align:center;text-anchor:middle;stroke-width:0.264583"
+         x="35"
+         y="12"
+         id="tspan7753-3">Clients</tspan><tspan
+         sodipodi:role="line"
+         style="font-size:2.82222px;text-align:center;text-anchor:middle;stroke-width:0.264583"
+         x="35"
+         y="15.527775"
+         id="tspan10610">sending HTTPS</tspan><tspan
+         sodipodi:role="line"
+         style="font-size:2.82222px;text-align:center;text-anchor:middle;stroke-width:0.264583"
+         x="35"
+         y="19.05555"
+         id="tspan12442">requests</tspan></text>
     <text
        xml:space="preserve"
        style="font-size:5.64444px;line-height:1.25;font-family:sans-serif;stroke-width:0.264583"
@@ -247,19 +296,19 @@
        sodipodi:nodetypes="cc" />
     <text
        xml:space="preserve"
-       style="font-size:2.82222px;line-height:1.25;font-family:sans-serif;stroke-width:0.264583"
-       x="39.171486"
-       y="24"
+       style="font-size:2.11667px;line-height:1.25;font-family:sans-serif;stroke-width:0.264583"
+       x="82"
+       y="6"
        id="text45523"><tspan
          sodipodi:role="line"
          id="tspan45521"
-         style="font-size:2.82222px;text-align:center;text-anchor:middle;stroke-width:0.264583"
-         x="39.171486"
-         y="24">apache2 as reverse proxy</tspan><tspan
+         style="font-size:2.11667px;text-align:center;text-anchor:middle;stroke-width:0.264583"
+         x="82"
+         y="6">reverse proxy</tspan><tspan
          sodipodi:role="line"
-         style="font-size:2.82222px;text-align:center;text-anchor:middle;stroke-width:0.264583"
-         x="39.171486"
-         y="27.527775"
+         style="font-size:2.11667px;text-align:center;text-anchor:middle;stroke-width:0.264583"
+         x="82"
+         y="8.6458368"
          id="tspan68850">for HTTPS access</tspan></text>
     <text
        xml:space="preserve"
@@ -300,57 +349,33 @@
          x="115"
          y="33.527775"
          id="tspan4368">cache</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-size:2.82222px;line-height:1.25;font-family:sans-serif;stroke-width:0.264583"
+       x="83"
+       y="16"
+       id="text45523-3-6-3"><tspan
+         sodipodi:role="line"
+         style="font-size:2.82222px;text-align:center;text-anchor:middle;stroke-width:0.264583"
+         x="83"
+         y="16"
+         id="tspan4368-6">apache2</tspan></text>
     <path
        style="fill:none;stroke:#000000;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;marker-start:url(#Arrow1Lstart-3);marker-end:url(#Arrow1Lend-7)"
-       d="m 47,15 h 118 l 0,22 h -9"
+       d="M 90.999999,15 165,15 v 22 h -9"
        id="path52618-3"
        sodipodi:nodetypes="cccc" />
     <text
        xml:space="preserve"
        style="font-size:2.82222px;line-height:1.25;font-family:sans-serif;stroke-width:0.264583"
        x="55"
-       y="5"
+       y="35"
        id="text53785"><tspan
          sodipodi:role="line"
          id="tspan53783"
          style="font-size:2.82222px;stroke-width:0.264583"
          x="55"
-         y="5">Firewall</tspan></text>
-    <text
-       xml:space="preserve"
-       style="font-size:2.82222px;line-height:1.25;font-family:sans-serif;stroke-width:0.264583"
-       x="106"
-       y="9"
-       id="text64320"><tspan
-         sodipodi:role="line"
-         id="tspan64318"
-         style="font-size:2.82222px;stroke-width:0.264583"
-         x="106"
-         y="9">SSH tunnel</tspan></text>
-    <ellipse
-       style="fill:none;stroke:#b3b3b3;stroke-width:0.264583;stroke-linecap:round;stroke-dasharray:1.05833, 1.05833"
-       id="path1812"
-       cx="55"
-       cy="15"
-       rx="1.9999999"
-       ry="5" />
-    <ellipse
-       style="fill:none;stroke:#b3b3b3;stroke-width:0.264583;stroke-linecap:round;stroke-dasharray:1.05833, 1.05833"
-       id="path1812-5"
-       cx="155"
-       cy="15"
-       rx="1.9999999"
-       ry="5" />
-    <path
-       style="fill:none;stroke:#b3b3b3;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-       d="M 54.999998,9.9999997 155,9.9999999"
-       id="path1990"
-       sodipodi:nodetypes="cc" />
-    <path
-       style="fill:none;stroke:#b3b3b3;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-       d="m 155,20 -100.000002,-1e-6"
-       id="path1992"
-       sodipodi:nodetypes="cc" />
+         y="35">Firewall</tspan></text>
     <rect
        style="fill:#e6e6e6;stroke-width:1;stroke-linecap:round"
        id="rect19340"
@@ -476,6 +501,11 @@
        style="fill:none;stroke:#000000;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;marker-start:url(#Arrow1Lstart);marker-end:url(#Arrow1Lend)"
        d="m 121,45 h 13"
        id="path36797"
+       sodipodi:nodetypes="cc" />
+    <path
+       style="fill:none;stroke:#000000;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;marker-start:url(#Arrow1Lstart-2);marker-end:url(#Arrow1Lend-1)"
+       d="m 46,15 27.499999,0"
+       id="path36797-7"
        sodipodi:nodetypes="cc" />
     <path
        style="fill:none;stroke:#000000;stroke-width:0.264583px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1;marker-start:url(#Arrow1Lstart-6);marker-end:url(#Arrow1Lend-6)"

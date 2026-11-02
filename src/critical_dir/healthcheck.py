@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 # Christoph Lechner, 2025-Nov-27
 #
 # Simple health monitoring via HTTP
@@ -9,7 +7,6 @@
 
 import threading
 from queue import Queue
-import threading
 import uvicorn
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse,Response
@@ -67,11 +64,10 @@ class Healthcheck:
             if not app.state.s['ts_last_heartbeat']:
                 return False
 
-            tnow = datetime.datetime.now()
+            tnow = datetime.datetime.now(tz=datetime.timezone.utc)
             deltat = tnow - app.state.s['ts_last_heartbeat']
-            if deltat.total_seconds()>self.max_age:
-                return False
-            return True # time criterion is met
+            # returns True if time criterion is met
+            return deltat.total_seconds()<=self.max_age
 
         @app.get('/check', response_class=HTMLResponse)
         def check():
@@ -113,11 +109,11 @@ class Healthcheck:
         self.tsrv.join()
 
     def heartbeat(self):
-        msg = Healthcheck_Msg(ts_send=datetime.datetime.now())
+        msg = Healthcheck_Msg(ts_send=datetime.datetime.now(tz=datetime.timezone.utc))
         self.q.put(msg)
 
 # Simple demo
-# -> consider running 'pytest' to use the tests that come with this class
+# -> 2026-Nov: there is now a first 'pytest'-based test (to be extended in the future)
 if __name__=='__main__':
     h = Healthcheck(max_age=10)
     h.heartbeat()

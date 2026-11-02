@@ -57,7 +57,7 @@ try:
 except psycopg.errors.UndefinedTable as e:
     st.warning(
             f'''Got exception related to missing table. Remember that this dashboard requires additional data preparation.
-            The message is: "{str(e)}"
+            The message is: "{e!s}"
             Stopping here.'''
     )
     st.stop()

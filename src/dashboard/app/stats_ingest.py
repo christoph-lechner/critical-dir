@@ -91,7 +91,7 @@ fig.add_trace(
         x=df['d'],
         y=df['max'],
         mode='lines',
-        line=dict(color='royalblue'),
+        line={'color':'royalblue'},
         name='Maximum',
     )
 )
@@ -100,7 +100,7 @@ fig.add_trace(
         x=df['d'],
         y=df['min'],
         mode='lines',
-        line=dict(color='royalblue'),
+        line={'color': 'royalblue'},
         fill='tonexty',
         fillcolor="rgba(65, 105, 225, 0.2)",
         name='Minimum',

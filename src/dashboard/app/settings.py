@@ -1,6 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import PostgresDsn
-from pathlib import Path
 from functools import cache
 
 class Settings(BaseSettings):

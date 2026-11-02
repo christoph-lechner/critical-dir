@@ -8,7 +8,6 @@ import queue
 import sys
 import argparse
 from threading import Event
-from pathlib import Path
 import traceback
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -170,7 +169,7 @@ def data_route_and_merge(cur, *, data_table, archive_table, quarantine_table, st
     # settings = get_settings() # this fails when running tests (there is no '.env' file with valid settings, so pydantic validation is not successful)
     res_m   = execute_merge(dst_table=data_table,        dataok=True)
     if use_archive:
-        res_m_a = execute_merge(dst_table=archive_table, dataok=True, deviceid_col='deviceid_h')
+        res_m_a = execute_merge(dst_table=archive_table, dataok=True, deviceid_col='deviceid_h') # noqa F841 # the name of the (unused) variable documents what is returned
     res_m_q = execute_merge(dst_table=quarantine_table,  dataok=False)
     n_q = res_m_q['n_inserts']+res_m_q['n_updates']
 
@@ -261,7 +260,8 @@ def run_pipeline(cur,settings,data,t0, *, temptbl=True):
             use_archive=settings.use_archive,
     )
     # finally, expire old entries from the data table, but NOT from the archive table
-    nrows_deleted = data_delete_old(cur, data_table=settings.datatable)
+    nrows_deleted = data_delete_old(cur, data_table=settings.datatable) # noqa F841 # the name of the (unused) variable documents what is returned
+
 
     return PipelineResult(
         id_run,
@@ -288,7 +288,7 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
     settings = get_settings()
 
     def get_fn(*, fn_extension:str='json'):
-        tnow = datetime.datetime.now()
+        tnow = datetime.datetime.now(tz=datetime.timezone.utc)
         tdatestr = tnow.strftime('%Y%m%d')
         tnowstr = tnow.strftime('%Y%m%dT%H%M%S_%f') # '%f' is always 6 digits wide and padded w/ leading zeros
         # create data directory if needed (using per-day directories for better file organization)
@@ -306,14 +306,14 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
             fout.write(txt)
 
 
-    tprocstart = datetime.datetime.now()
+    tprocstart = datetime.datetime.now(tz=datetime.timezone.utc)
 
     # establish DB connection
     try:
         conn = get_db_conn()
         # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
         cur = conn.cursor(row_factory=dict_row)
-    except Exception as e:
+    except psycopg.Error: # catches base exception for all errors psycopg will raise
         print('*** Could not establish DB connection ***')
         put_info_file(traceback.format_exc(), dupl_to_stdout=True)
         return False
@@ -342,7 +342,7 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
         put_info_file(traceback.format_exc(), dupl_to_stdout=True)
         procstats = ProcStats(
                 tstart=tprocstart,
-                total_time = (datetime.datetime.now() - tprocstart).total_seconds(),
+                total_time = (datetime.datetime.now(tz=datetime.timezone.utc) - tprocstart).total_seconds(),
                 total_status = False,
                 exc_inphase='API access',
                 exc_name = type(e).__qualname__,
@@ -364,7 +364,7 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
         res_pipeline = run_pipeline(cur, settings, data, tprocstart)
         procstats = ProcStats(
                 tstart=tprocstart,
-                total_time = (datetime.datetime.now() - tprocstart).total_seconds(),
+                total_time = (datetime.datetime.now(tz=datetime.timezone.utc) - tprocstart).total_seconds(),
                 total_status = True,
                 # 2026-06-29: at the moment not assigning HTTP response code
                 filename = str(fn_out),
@@ -382,7 +382,7 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
         put_info_file(traceback.format_exc(), dupl_to_stdout=True)
         procstats = ProcStats(
                 tstart=tprocstart,
-                total_time = (datetime.datetime.now() - tprocstart).total_seconds(),
+                total_time = (datetime.datetime.now(tz=datetime.timezone.utc) - tprocstart).total_seconds(),
                 total_status = False,
                 exc_inphase='DB access',
                 exc_name = type(e).__qualname__,
@@ -410,24 +410,22 @@ def t_download_thread(*, stop_event, q_retcode: queue.Queue=None, f_heartbeat: C
         """
         Returns True if we received a stop signal
         """
-        deltat = tnext - datetime.datetime.now()
+        deltat = tnext - datetime.datetime.now(tz=datetime.timezone.utc)
         deltat = deltat.total_seconds()
         while deltat>0:
             # break wait down into short waits to make it responsive (I think a sleep cannot be interrupted by a signal in Python)
-            if deltat>3:
-                deltat = 3
+            deltat = min(deltat,3)
             # print(f'waiting for {deltat:.1f} seconds ...')
             time.sleep(deltat)
             if stop_event.is_set():
                 # print('got SIGTERM/SIGINT -> stopping')
                 return True
-            deltat = tnext - datetime.datetime.now()
+            deltat = tnext - datetime.datetime.now(tz=datetime.timezone.utc)
             deltat = deltat.total_seconds()
         return False
 
-    if f_heartbeat:
-        if not callable(f_heartbeat):
-            raise ValueError('if specified, value has to be "callable"')
+    if f_heartbeat and not callable(f_heartbeat):
+        raise TypeError('if specified, value has to be "callable"')
 
     # prepare arguments for worker
     kwargs = {}
@@ -444,7 +442,7 @@ def t_download_thread(*, stop_event, q_retcode: queue.Queue=None, f_heartbeat: C
         return
 
     # schedule first request to happen at the start of the next minute
-    tnext = ceil_min( datetime.datetime.now() )
+    tnext = ceil_min( datetime.datetime.now(tz=datetime.timezone.utc) )
     print(f'About to enter main loop, first API access scheduled for {tnext}')
     while True:
         wait_until(tnext)

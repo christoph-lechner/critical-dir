@@ -101,7 +101,7 @@ class DataLoader(ABC):
 class DataLoaderDB(DataLoader):
     def __init__(self, *, f_factory_DBconn: callable, t0: int=None):
         if not callable(f_factory_DBconn):
-            raise ValueError('expecting function as argument')
+            raise TypeError('expecting function as argument')
         self.f_factory_DBconn = f_factory_DBconn
 
         self.supports_tracepersistence = True
@@ -308,7 +308,7 @@ class MyAnalyzer:
         """
 
         if not isinstance(dl, DataLoader):
-            raise ValueError('expecting DataLoader object')
+            raise TypeError('expecting DataLoader object')
 
         # fprefix should be unique to this session
         if fprefix is None:
@@ -324,7 +324,7 @@ class MyAnalyzer:
 
     def perform_analysis(self, *, observer_pos, ag: AlgoConfig):
         if not isinstance(self.dl, DataLoader):
-            raise ValueError('expecting DataLoader object')
+            raise TypeError('expecting DataLoader object')
 
         ### HERE WE COLLECT INFOS TO BE RETURNED TO CALLER (= the client via the API server) ###
         diag_info = []

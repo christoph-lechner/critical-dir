@@ -479,7 +479,9 @@ def health_check_core_worker(*, report_stale_db=True):
         is_ok=False
     return is_ok
 
-def health_check_worker(kwargs={}):
+def health_check_worker(kwargs=None):
+    if kwargs is None:
+        kwargs={}
     is_ok = health_check_core_worker(**kwargs)
     if is_ok:
         return HTMLResponse('OK')

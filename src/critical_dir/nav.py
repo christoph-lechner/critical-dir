@@ -1,5 +1,6 @@
 import numpy as np
 
+# Note added Nov-2026: This code is no longer in use
 # Note added July-2026: The web app repo contains a superior Python implementation using atan2
 
 def get_nav(point1, point2):
@@ -17,11 +18,9 @@ def get_nav(point1, point2):
         eps = 1e-12
         if x>=-1.0 and x<=1.0:
             return x
-        if x>1:
-            if x<1+eps:
+        if x>1 and x<1+eps:
                 return 1.0
-        if x<-1:
-            if x>(-1-eps):
+        if x<-1 and x>(-1-eps):
                 return -1.0
         raise ValueError(f'value outside of range [-1-eps; 1+eps] (eps={eps})')
 
@@ -43,9 +42,9 @@ def get_nav(point1, point2):
     return (np.degrees(tc1), d)
 
 def get_initial_course(point1, point2):
-    course,dist = get_nav(point1,point2)
+    course,_ = get_nav(point1,point2)
     return course
 
 def get_dist_radians(point1, point2):
-    course,dist = get_nav(point1,point2)
+    _,dist = get_nav(point1,point2)
     return dist

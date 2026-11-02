@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
 
 import uvicorn
-from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse,Response
+from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi.responses import HTMLResponse
 from fastapi import Request
+import secrets
+from typing import Annotated
 from pydantic import BaseModel, field_serializer
 
+import json
+from redis import Redis
+from redis.exceptions import LockError,RedisError
+
 import numpy as np
-from pathlib import Path
 import datetime
 from zoneinfo import ZoneInfo
 from dataclasses import dataclass
 from threading import Lock # for dataclass holding settings
 
-from critical_dir.criticaldir_core import MyAnalyzer,MyPlotter,DataLoaderDB,AlgoConfig
+from critical_dir.criticaldir_core import MyAnalyzer,DataLoaderDB,AlgoConfig
 from critical_dir.db_conn import get_db_conn
 from critical_dir.settings import get_settings
 from critical_dir.exceptions import EInsufficientData
@@ -78,12 +83,6 @@ class ServerSettings:
 ### AUTH CODE ###
 # https://fastapi.tiangolo.com/advanced/security/http-basic-auth/
 # last access 2026-07-04
-import secrets
-from typing import Annotated
-
-from fastapi import Depends, FastAPI, HTTPException, status
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-
 security = HTTPBasic()
 
 def get_current_username(
@@ -125,11 +124,6 @@ app = FastAPI(
 app.state.server_settings = ServerSettings()
 app.state.lock_server_settings = Lock()
 
-
-
-import json
-from redis import Redis
-from redis.exceptions import LockError
 def get_redis_hostname():
     settings = get_settings()
     return settings.redis_host
@@ -147,21 +141,18 @@ class MyJSONEncoder(json.JSONEncoder):
         return super().default(obj)
 
 
-# v1 of the web client is not deprecated, so /objs is not needed anymore
-# app.mount('/objs', StaticFiles(directory='objs'), name='objs')
-
 @app.get('/', response_class=HTMLResponse)
 async def req_catch_all(request: Request):
     html = "<html><body><h1>Home Page</h1><hr>This demonstrates that the server can be reached.</body></html>"
     return HTMLResponse(content=html)
 
 
-###############################################################################################
-### /location is the main workhorse, requests from WebApp for data on overview page go here ###
-###############################################################################################
+#######################################
+### /clusters is the main workhorse ###
+#######################################
 
 def generate_simulated_clusters():
-    epoch_now = int(datetime.datetime.now().timestamp())
+    epoch_now = int(datetime.datetime.now(tz=datetime.timezone.utc).timestamp())
 
     p0 = np.array([53.55, 10.0])
     period = 900 # seconds (should be integer)
@@ -291,9 +282,9 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
                     raise # FIXME/TODO: correct to re-raise?
                 finally:
                     print(f'*** storing data in cache, key={key}')
-                    # add timestamp (in UNIX epoch) to data, for later implementation of advanced caching schemes
+                    # add timestamp (in UNIX epoch) to data, for future implementations of advanced caching schemes
                     # (for instance, one could serve data already somewhat 'stale' but still within the hard cache expiration time and trigger preparation of fresh data in the background)
-                    tsnow = datetime.datetime.now().timestamp()
+                    tsnow = datetime.datetime.now(tz=datetime.timezone.utc).timestamp()
                     d_cache['timestamp'] = tsnow
                     redis.set(key, json.dumps(d_cache, cls=MyJSONEncoder), ex=ttl)
 
@@ -342,106 +333,12 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, us
     # print(r_h)
     return r, r_h
 
-def location_worker(user_pos, *, ag):
-    # store timestamp
-    tic = datetime.datetime.now()
-
-    # generate "unique" prefix for image files
-    tstr = tic.strftime('%Y%m%dT%H%M%S.%f')
-    fprefix = f'img_{tstr}_'
-
-    settings = get_settings()
-    def adjust_AlgoConfig(ag):
-        from dataclasses import replace
-        if not settings.privacy_mode:
-            return ag
-        # force exclusion of isolated points
-        changes={'exclude_isolated_points':True}
-        return replace(ag, **changes)
-
-    # use DB for current positions
-    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
-    my_a = MyAnalyzer(dl=my_dl, obj_path=settings.img_dir, fprefix=fprefix)
-    res = my_a.perform_analysis(observer_pos=user_pos, ag=adjust_AlgoConfig(ag))
-    my_p = MyPlotter(
-        dl=my_dl,
-        obj_path=settings.img_dir, fprefix=fprefix
-    )
-    r = my_p.doit(res=res)
-
-
-    diag_info = '<h3>Diag Infos</h3>'
-    diag_info += f'Server time: {tstr}<br>'
-    diag_info += '<ul>'
-    for di in r['diag_info']:
-        diag_info += '<li>'+di
-    diag_info += '</ul>'
-
-
-    def ci_as_table(lci):
-        """
-        Converts list of ClusterInfo instances to HTML table
-        """
-        r = "<table>\n"
-        if len(lci)>0:
-            r += lci[0].table_header()
-            for x in lci:
-                # generate 'inspect' link only when requested to do so (currently, the URL contains geoposition data)
-                with_inspect_link = not settings.privacy_mode
-                r += x.as_html(with_inspect_link=with_inspect_link) + '\n'
-        else:
-            r += '<tr><td><font color=red>(no clusters match current criteria)</font></td></tr>'
-        r += "</table>\n"
-        return r
-
-    # ci = r['clusters']
-    ci = res.cluster_infos
-    ci = sorted(ci, key=lambda _: (_.N,(-1)*_.dist_km), reverse=True) # Note: tuple as sort key -> force sort order for clusters with identical N, list closer clusters first (if first element is identical, second element determines sort order)
-    ci_dist = sorted(ci, key=lambda _: _.dist_km, reverse=False)
-    html_info  = ''
-    html_info += '<h3>Clusters (lowest distance first)</h3>'
-    html_info += ci_as_table(ci_dist)
-    html_info += '<h3>Clusters (largest cluster first)</h3>'
-    html_info += ci_as_table(ci)
-
-    # Keys of images to present FIRST (in this order)
-    top_files = ['clusters_polar','clusters_hamburg','clusters']
-
-    html_imgs = ""
-    print(r['files'])
-    def html4img(k):
-        def get_img_loc(k):
-            return 'api/objs/' + r['files'][k]
-        return f'<img src="{ get_img_loc(k) }"><br>'
-    ### top imgs
-    for k in top_files:
-        if not k in r['files']:
-            print(f'WARNING: key {k} not found in list of files')
-            continue
-        html_imgs += html4img(k)
-    ### all other images
-    for k in r['files'].keys():
-        if k in top_files:
-            continue
-        html_imgs += html4img(k)
-
-    # store timestamp
-    toc = datetime.datetime.now()
-    deltat = toc-tic
-    deltat = deltat.total_seconds()
-    diag_info += f'<p>total processing time: {deltat:.2f} seconds'
-
-    return {
-        'html': html_info+'<h3>Plots generated by server</h3>'+html_imgs,
-        'diag': diag_info
-    }
-
 @app.get('/clusters_demo', response_model=ClustersResponse)
 def get_clusters_demo():
     clusters,_ = clusters_worker(ag=None, use_simulated_data=True)
     r = {
         # only parameters influencing the result (we enforce min cluster size -> irrelevant if isolated points are excluded by clustering algorithm or no; not using any trace persistence here)
-        'info': f'd=1.0, x=True',
+        'info': 'd=1.0, x=True',
         'clusters': clusters
     }
     return r
@@ -525,78 +422,12 @@ def set_t0(payload: SetT0Request, _: None = Depends(get_current_username)):
         app.state.server_settings.t0               = t0
         app.state.server_settings.t0_do_not_report = t0_do_not_report
 
-@app.post('/location_demo', response_model=LocationResponse)
-@app.get('/location_demo', response_model=LocationResponse)
-def update_location_demo():
-    """
-    Implements location API endpoint for DEMO
-    (input: does not require coordinates, uses hard-coded user-coordinates)
-    """
-    # end point is deprecated (but keeping the code for now)
-    return HTMLResponse('permission denied', status_code=403)
-
-    # fixed dummy position in Hamburg for dev/demo
-    user_pos = np.array([53.55, 10.0])
-    ag = AlgoConfig(
-        exclude_isolated_points=payload.cfg_flag_iso,
-        exclude_stationary_devices=payload.cfg_flag_exclude_stationary, 
-        cluster_dist_thres=payload.cfg_cluster_dist,
-        device_trace_persistence=payload.cfg_tpersistence
-    )
-    return location_worker(user_pos, ag=ag)
-
-@app.post('/location', response_model=LocationResponse)
-def update_location(payload: LocationRequest):
-    """
-    Implements location API endpoint
-    """
-    # end point is deprecated (but keeping the code for now)
-    return HTMLResponse('permission denied', status_code=403)
-
-    user_pos = np.array([payload.latitude, payload.longitude])
-    ag = AlgoConfig(
-        exclude_isolated_points=payload.cfg_flag_iso,
-        exclude_stationary_devices=payload.cfg_flag_exclude_stationary, 
-        cluster_dist_thres=payload.cfg_cluster_dist,
-        device_trace_persistence=payload.cfg_tpersistence
-    )
-    return location_worker(user_pos, ag=ag)
-
-
-@app.get('/inspect', response_class=HTMLResponse)
-async def inspect(clat: float, clong: float):
-    # end point is deprecated (but keeping the code for now)
-    return HTMLResponse('permission denied', status_code=403)
-
-    settings = get_settings()
-
-    if settings.privacy_mode:
-        return HTMLResponse('permission denied', status_code=403)
-
-    # generate "unique" prefix for image files
-    tnow = datetime.datetime.now()
-    tstr = tnow.strftime('%Y%m%dT%H%M%S.%f')
-    fprefix = f'img_{tstr}_'
-
-    my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
-    my_a = MyAnalyzer(dl=my_dl, obj_path=settings.img_dir, fprefix=fprefix)
-    my_p = MyPlotter(
-        dl=my_dl,
-        obj_path=settings.img_dir, fprefix=fprefix
-    )
-    r = my_p.inspect_generate_img(observer_pos=[clat,clong], ag=AlgoConfig())
-
-    fn_img = r['files']['inspect']
-    html = f"<html><body><a href=/myapp/>For iPhone PWA: Back</a><p>Inspecting local distribution of riders around {clat:.4f},{clong:.4f}. Note that this plot does not indicate cluster infos, so all positions are indicated with same marker color.<img src=\"objs/{fn_img}\"></body></html>"
-    return HTMLResponse(content=html)
-
-
 
 def check_redis():
     """
     Test that redis server works, using most important operations: get/set
     """
-    tsnow = int(datetime.datetime.now().timestamp())
+    tsnow = int(datetime.datetime.now(tz=datetime.timezone.utc).timestamp())
     key = f'healthcheck:{tsnow}'
 
     # we write a time-dependent value
@@ -618,7 +449,7 @@ def check_db_freshness(*, max_age = 900):
     """
     my_dl = DataLoaderDB(f_factory_DBconn=get_db_conn)
     max_timestamp = my_dl.get_data_newest_timestamp()
-    epoch_now = datetime.datetime.now().timestamp()
+    epoch_now = datetime.datetime.now(tz=datetime.timezone.utc).timestamp()
     deltat = epoch_now - max_timestamp
 
     # Catch any timestamps from the "future". Or the system clock is off...
@@ -644,9 +475,8 @@ def health_check_core_worker(*, report_stale_db=True):
    
     # determine the result, taking everything into consideration
     is_ok = redis_ok # in the future: take into  more flags using boolean and operation
-    if report_stale_db:
-        if is_fresh==False:
-            is_ok=False
+    if report_stale_db and is_fresh==False:
+        is_ok=False
     return is_ok
 
 def health_check_worker(kwargs={}):
@@ -664,7 +494,7 @@ async def health():
 
 @app.get('/health_no_freshness_check', response_class=HTMLResponse)
 @app.head('/health_no_freshness_check', response_class=HTMLResponse)
-async def health():
+async def health_no_freshness_check():
     """
     Test for Docker, does not consider DB freshness (as stale data does not prevent the
     API server from operating). This prevents a "restart storm".

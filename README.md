@@ -42,8 +42,7 @@ In the following we make the reasonable assumption that bike events such as a Cr
   - On the other hand, some points are too far away from any other point. For the following, they are not considered
 - At the end of this process, the dataset is partitioned into several sets of points referred to as "clusters".
 
-The animation illustrates the key data processing steps
-
+This animation illustrates the key data processing steps for several devices positioned on a city map:
 ![animation of data processing](./doc/anim/anim.gif)
 
 A reasonable starting point for selecting parameters could be

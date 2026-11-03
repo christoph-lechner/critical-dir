@@ -42,6 +42,10 @@ In the following we make the reasonable assumption that bike events such as a Cr
   - On the other hand, some points are too far away from any other point. For the following, they are not considered
 - At the end of this process, the dataset is partitioned into several sets of points referred to as "clusters".
 
+The animation illustrates the key data processing steps
+
+![animation of data processing](./doc/anim/anim.gif)
+
 A reasonable starting point for selecting parameters could be
 * minimum cluster size N=3 (one may consider to set this minimum threshold higher)
 * radius 300m (at 15km/h 500m would correspond to 120s, so one position update may even be lost)

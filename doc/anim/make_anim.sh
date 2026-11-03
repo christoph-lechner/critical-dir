@@ -6,4 +6,4 @@
 
 set -xe
 
-convert -delay 100 -loop 0 anim_step*.png anim.gif
+convert -delay 300 -loop 0 anim_step*.png anim.gif

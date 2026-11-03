@@ -3,8 +3,8 @@
 
 <svg
    width="73mm"
-   height="60mm"
-   viewBox="0 0 73 60"
+   height="62mm"
+   viewBox="0 0 73 62"
    version="1.1"
    id="svg5"
    inkscape:version="1.1.2 (0a00cf5339, 2022-02-04)"
@@ -25,14 +25,14 @@
      showgrid="true"
      inkscape:snap-object-midpoints="true"
      inkscape:snap-text-baseline="true"
-     inkscape:zoom="2.54"
-     inkscape:cx="81.692914"
-     inkscape:cy="109.64567"
-     inkscape:window-width="2192"
-     inkscape:window-height="970"
-     inkscape:window-x="26"
-     inkscape:window-y="23"
-     inkscape:window-maximized="0"
+     inkscape:zoom="5.0380663"
+     inkscape:cx="138.049"
+     inkscape:cy="117.70389"
+     inkscape:window-width="2560"
+     inkscape:window-height="1403"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
      inkscape:current-layer="layer3">
     <inkscape:grid
        type="xygrid"
@@ -47,15 +47,15 @@
      inkscape:label="background"
      inkscape:groupmode="layer"
      id="layer1"
-     sodipodi:insensitive="true"
-     style="display:inline">
+     style="display:inline"
+     sodipodi:insensitive="true">
     <rect
        style="fill:#cccccc;stroke:none;stroke-width:0.264999;stroke-linecap:round"
        id="rect928"
        width="18.999998"
        height="14"
        x="6"
-       y="6"
+       y="8"
        ry="1" />
     <rect
        style="fill:#cccccc;stroke:none;stroke-width:0.264999;stroke-linecap:round"
@@ -63,7 +63,7 @@
        width="18.999998"
        height="14"
        x="27"
-       y="6"
+       y="8"
        ry="1" />
     <rect
        style="fill:#cccccc;stroke:none;stroke-width:0.264999;stroke-linecap:round"
@@ -71,7 +71,7 @@
        width="18.999998"
        height="14"
        x="48"
-       y="6"
+       y="8"
        ry="1" />
     <rect
        style="fill:#cccccc;stroke:none;stroke-width:0.264999;stroke-linecap:round"
@@ -79,7 +79,7 @@
        width="18.999998"
        height="14"
        x="6"
-       y="22"
+       y="24"
        ry="1" />
     <rect
        style="fill:#cccccc;stroke:none;stroke-width:0.264999;stroke-linecap:round"
@@ -87,7 +87,7 @@
        width="7"
        height="14"
        x="27"
-       y="22"
+       y="24"
        ry="1" />
     <rect
        style="fill:#00aa00;fill-opacity:1;stroke:none;stroke-width:0.264999;stroke-linecap:round"
@@ -95,7 +95,7 @@
        width="9"
        height="14"
        x="37"
-       y="22"
+       y="24"
        ry="1" />
     <rect
        style="fill:#cccccc;stroke:none;stroke-width:0.264999;stroke-linecap:round"
@@ -103,7 +103,7 @@
        width="18.999998"
        height="14"
        x="48"
-       y="22"
+       y="24"
        ry="1" />
     <rect
        style="fill:#cccccc;stroke:none;stroke-width:0.264999;stroke-linecap:round"
@@ -111,7 +111,7 @@
        width="18.999998"
        height="14"
        x="6.0000019"
-       y="38"
+       y="40"
        ry="1" />
     <rect
        style="fill:#cccccc;stroke:none;stroke-width:0.264999;stroke-linecap:round"
@@ -119,7 +119,7 @@
        width="7"
        height="14"
        x="27.000002"
-       y="38"
+       y="40"
        ry="1" />
     <rect
        style="fill:#00aa00;fill-opacity:1;stroke:none;stroke-width:0.264999;stroke-linecap:round"
@@ -127,7 +127,7 @@
        width="9"
        height="14"
        x="37.000004"
-       y="38"
+       y="40"
        ry="1" />
     <rect
        style="fill:#cccccc;stroke:none;stroke-width:0.264999;stroke-linecap:round"
@@ -135,7 +135,7 @@
        width="18.999998"
        height="14"
        x="48.000004"
-       y="38"
+       y="40"
        ry="1" />
   </g>
   <g
@@ -148,109 +148,109 @@
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="path1477"
        cx="53"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="path1477-2"
        cx="55"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="path1477-9"
        cx="56"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="path1477-1"
        cx="59"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="path1477-27"
        cx="61"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="path1477-0"
        cx="60"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="path1477-93"
        cx="11"
-       cy="21"
+       cy="23"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="path1477-6"
        cx="47"
-       cy="10"
+       cy="12"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="path1477-06"
        cx="45"
-       cy="50"
+       cy="52"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="path1477-06-9"
        cx="33"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="path1477-06-0"
        cx="35"
-       cy="39"
+       cy="41"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="path1477-06-23"
        cx="36"
-       cy="39"
+       cy="41"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="path1477-06-7"
        cx="35"
-       cy="38"
+       cy="40"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="path1477-06-5"
        cx="32"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="path1477-06-92"
        cx="35"
-       cy="40"
+       cy="42"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="path1477-06-28"
        cx="31"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="path1477-06-97"
        cx="29"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="path1477-06-2"
        cx="35"
-       cy="39"
+       cy="41"
        r="0.5" />
     <circle
        style="display:inline;fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
@@ -280,43 +280,43 @@
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21286"
        cx="53"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21288"
        cx="55"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21290"
        cx="56"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21292"
        cx="59"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21294"
        cx="61"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21296"
        cx="60"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:none;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21298"
        cx="11"
-       cy="21"
+       cy="23"
        r="0.5" />
     <circle
        style="display:inline;fill:none;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
@@ -328,79 +328,79 @@
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21300"
        cx="47"
-       cy="10"
+       cy="12"
        r="0.5" />
     <circle
        style="fill:none;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21302"
        cx="45"
-       cy="50"
+       cy="52"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21304"
        cx="33"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21306"
        cx="35"
-       cy="39"
+       cy="41"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21308"
        cx="36"
-       cy="39"
+       cy="41"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21310"
        cx="35"
-       cy="38"
+       cy="40"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21312"
        cx="32"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21314"
        cx="35"
-       cy="40"
+       cy="42"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21316"
        cx="31"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21318"
        cx="29"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21320"
        cx="35"
-       cy="39"
+       cy="41"
        r="0.5" />
     <text
        xml:space="preserve"
        style="font-size:1.76389px;line-height:1.25;font-family:sans-serif;word-spacing:0px;stroke-width:0.264583"
        x="6"
-       y="55"
+       y="57"
        id="text7321"><tspan
          sodipodi:role="line"
          id="tspan7319"
          style="font-size:1.76389px;stroke-width:0.264583"
          x="6"
-         y="55">Step 1: Identify stationary devices</tspan></text>
+         y="57">Step 1: Identify stationary devices</tspan></text>
     <text
        xml:space="preserve"
        style="font-size:1.76389px;line-height:1.25;font-family:sans-serif;display:inline;stroke-width:0.264583"
@@ -440,121 +440,121 @@
        style="fill:#ff0000;stroke:#ff0000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21378"
        cx="53"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#ff0000;stroke:#ff0000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21380"
        cx="55"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#ff0000;stroke:#ff0000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21382"
        cx="56"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#ff0000;stroke:#ff0000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21384"
        cx="59"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#ff0000;stroke:#ff0000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21386"
        cx="61"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#ff0000;stroke:#ff0000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21388"
        cx="60"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:none;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21390"
        cx="11"
-       cy="21"
+       cy="23"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21392"
        cx="47"
-       cy="10"
+       cy="12"
        r="0.5" />
     <circle
        style="fill:none;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21394"
        cx="45"
-       cy="50"
+       cy="52"
        r="0.5" />
     <circle
        style="fill:#ffaa33;fill-opacity:1;stroke:#ffaa33;stroke-width:0.264999;stroke-linecap:round;stroke-opacity:1"
        id="circle21396"
        cx="33"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#000000;stroke:#000000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21398"
        cx="35"
-       cy="39"
+       cy="41"
        r="0.5" />
     <circle
        style="fill:#ffaa33;fill-opacity:1;stroke:#ffaa33;stroke-width:0.264999;stroke-linecap:round;stroke-opacity:1"
        id="circle21400"
        cx="36"
-       cy="39"
+       cy="41"
        r="0.5" />
     <circle
        style="fill:#ffaa33;fill-opacity:1;stroke:#ffaa33;stroke-width:0.264999;stroke-linecap:round;stroke-opacity:1"
        id="circle21402"
        cx="35"
-       cy="38"
+       cy="40"
        r="0.5" />
     <circle
        style="fill:#ffaa33;fill-opacity:1;stroke:#ffaa33;stroke-width:0.264999;stroke-linecap:round;stroke-opacity:1"
        id="circle21404"
        cx="32"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#ffaa33;fill-opacity:1;stroke:#ffaa33;stroke-width:0.264999;stroke-linecap:round;stroke-opacity:1"
        id="circle21406"
        cx="35"
-       cy="40"
+       cy="42"
        r="0.5" />
     <circle
        style="fill:#ffaa33;fill-opacity:1;stroke:#ffaa33;stroke-width:0.264999;stroke-linecap:round;stroke-opacity:1"
        id="circle21408"
        cx="31"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#ffaa33;fill-opacity:1;stroke:#ffaa33;stroke-width:0.264999;stroke-linecap:round;stroke-opacity:1"
        id="circle21410"
        cx="29"
-       cy="37"
+       cy="39"
        r="0.5" />
     <circle
        style="fill:#ffaa33;fill-opacity:1;stroke:#ffaa33;stroke-width:0.264999;stroke-linecap:round;stroke-opacity:1"
        id="circle21412"
        cx="35"
-       cy="39"
+       cy="41"
        r="0.5" />
     <text
        xml:space="preserve"
        style="font-size:1.76389px;line-height:1.25;font-family:sans-serif;stroke-width:0.264583"
        x="6"
-       y="57"
+       y="59"
        id="text7321-2"><tspan
          sodipodi:role="line"
          id="tspan7319-6"
          style="font-size:1.76389px;stroke-width:0.264583"
          x="6"
-         y="57">Step 2: Detect device clusters</tspan></text>
+         y="59">Step 2: Detect device clusters</tspan></text>
     <circle
        style="display:inline;fill:#ff0000;stroke:#ff0000;stroke-width:0.264999;stroke-linecap:round"
        id="circle21378-7"
@@ -623,59 +623,59 @@
        style="fill:#ff0000;fill-opacity:1;stroke:#ff0000;stroke-width:0.264999;stroke-linecap:round"
        id="path16728"
        cx="60"
-       cy="36.999996"
+       cy="38.999996"
        r="2" />
     <circle
        style="fill:#ff0000;fill-opacity:1;stroke:#ff0000;stroke-width:0.264999;stroke-linecap:round"
        id="path16728-7"
        r="2.4000001"
-       cy="37"
+       cy="39"
        cx="54.599998" />
     <circle
        style="fill:#ffaa33;fill-opacity:1;stroke:#ffaa33;stroke-width:0.264999;stroke-linecap:round;stroke-opacity:1"
        id="path16728-7-3"
        r="1.6"
-       cy="39"
+       cy="41"
        cx="35.400002" />
     <circle
        style="fill:#ffaa33;fill-opacity:1;stroke:#ffaa33;stroke-width:0.264999;stroke-linecap:round;stroke-opacity:1"
        id="path16728-7-6"
        r="2.5999999"
-       cy="37"
+       cy="39"
        cx="31" />
     <text
        xml:space="preserve"
        style="font-size:1.76389px;line-height:1.25;font-family:sans-serif;stroke-width:0.264583"
        x="6"
-       y="59"
+       y="61"
        id="text7321-2-1"><tspan
          sodipodi:role="line"
          id="tspan7319-6-8"
          style="font-size:1.76389px;stroke-width:0.264583"
          x="6"
-         y="59">Step 3: Determine sub-clusters (returned to client via API)</tspan></text>
+         y="61">Step 3: Determine sub-clusters (returned to client via API)</tspan></text>
     <circle
        style="display:inline;fill:#ffaa33;fill-opacity:1;stroke:#ffaa33;stroke-width:0.264999;stroke-linecap:round;stroke-opacity:1"
        id="path16728-7-3-1"
        r="1.6"
        cy="3.4000001"
-       cx="54" />
+       cx="11.5" />
     <circle
        style="display:inline;fill:#ff0000;fill-opacity:1;stroke:#ff0000;stroke-width:0.264999;stroke-linecap:round"
        id="path16728-2"
-       cx="51"
+       cx="8.5"
        cy="3"
        r="2" />
     <text
        xml:space="preserve"
        style="font-size:1.76389px;line-height:1.25;font-family:sans-serif;display:inline;stroke-width:0.264583"
-       x="56"
+       x="13.5"
        y="2.5999999"
        id="text18442-3-7"><tspan
          sodipodi:role="line"
          id="tspan18440-5-0"
          style="font-size:1.76389px;stroke-width:0.264583"
-         x="56"
+         x="13.5"
          y="2.5999999">sub-clusters</tspan></text>
   </g>
 </svg>

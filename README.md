@@ -2,6 +2,7 @@
 **Project structure:** This repository contains the server-side code and serves as the main repository for the project. The other components of the project are maintained in separate repositories: [Web Client](https://github.com/christoph-lechner/critical-dir-map) and ["movie maker"](https://github.com/christoph-lechner/critical-dir-mm)
 
 ## Table of Contents
+- [Deployment](#deployment)
 - [Motivation and Solution](#motivation-and-solution)
   - [Applied solution](#applied-solution)
   - [Examples](#examples)
@@ -15,6 +16,9 @@
   - [API Endpoints](#api-endpoints)
   - [Ingestion](#ingestion)
     - [Health Monitoring](#health-monitoring)
+
+## Deployment
+Fully deployed in a production environment, currently in a restricted-access testing phase.
 
 ## Motivation and Solution
 The open-source project [CriticalMaps](https://www.criticalmaps.net/) ([repositories on github](https://github.com/criticalmaps/)) enables participants of ["Critical Mass"](https://en.wikipedia.org/wiki/Critical_Mass_(cycling)) events to share their current location with others on an interactive map.
@@ -38,6 +42,9 @@ In the following we make the reasonable assumption that bike events such as a Cr
   - On the other hand, some points are too far away from any other point. For the following, they are not considered
 - At the end of this process, the dataset is partitioned into several sets of points referred to as "clusters".
 
+This animation illustrates the key data processing steps for several devices positioned on a city map:
+![animation of data processing](./doc/anim/anim.gif)
+
 A reasonable starting point for selecting parameters could be
 * minimum cluster size N=3 (one may consider to set this minimum threshold higher)
 * radius 300m (at 15km/h 500m would correspond to 120s, so one position update may even be lost)
@@ -57,7 +64,7 @@ A reasonable starting point for selecting parameters could be
 - OS: Ubuntu Server 24.04 LTS
 - Docker
 - Python 3.10 or newer
-  - notable packages used: FastAPI, scikit-learn, psycopg, pytest; streamlit (for the dashboard)
+  - notable packages used: FastAPI, scikit-learn, psycopg, pytest; streamlit (for the dashboard); playwright (to [generate](https://github.com/christoph-lechner/critical-dir-mm) demonstration videos)
 - PostgreSQL v18
 - Redis
 - Test automatization using GitHub Actions, see [here](#cicd) for more information

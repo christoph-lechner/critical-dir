@@ -202,7 +202,7 @@ def status_info_generate_id(*, cur, info_table='criticalmaps_stats_dev'):
     res = cur.fetchone()
     return res['id']
 
-def store_status_info(*, cur, id_run:int=None, ps: ProcStats, info_table='criticalmaps_stats_dev'):
+def store_status_info(*, cur, id_run: int|None=None, ps: ProcStats, info_table='criticalmaps_stats_dev') -> None:
     if not id_run:
         id_run = status_info_generate_id(cur=cur, info_table=info_table)
 
@@ -281,7 +281,7 @@ def sighandler_term(signum, frame):
 
 #####
 
-def download_worker(*, f_heartbeat: Callable=None, api_url=None):
+def download_worker(*, f_heartbeat: Callable|None=None, api_url=None):
     """
     Returns True when everything was OK.
     """
@@ -335,7 +335,9 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
             f_heartbeat()
         #if status['healthcheck']:
         #    status['healthcheck'].heartbeat()
-    except Exception as e:
+    except Exception as e: # noqa: BLE001
+        # TODO: Improve this design to be more specific (don't just catch 'Exception'). Leaving it for now, as the exception specifics are stored in the DB.
+        #
         # Design idea to be implemented: Networking issues while getting the data are ok (this would also include any "bad" HTTP status codes such as 500),
         # consider to re-raise file I/O issues to stop the program (but then a watchdog has to start another instance so that data acquisition goes on)
         print('*** Data download resulted in exception ***')
@@ -377,7 +379,8 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
         store_status_info(cur=cur, id_run=res_pipeline.id_run, ps=procstats, info_table=settings.statstable)
 
         conn.commit()
-    except Exception as e:
+    except Exception as e: # noqa: BLE001
+        # TODO: Improve this design to be more specific (don't just catch 'Exception'). Leaving it for now, as the exception specifics are stored in the DB.
         print('*** DB operations resulted in exception ***')
         put_info_file(traceback.format_exc(), dupl_to_stdout=True)
         procstats = ProcStats(
@@ -403,7 +406,7 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
 
 
 
-def t_download_thread(*, stop_event, q_retcode: queue.Queue=None, f_heartbeat: Callable=None, test_single_request=False, override_api_url=None):
+def t_download_thread(*, stop_event, q_retcode: queue.Queue|None=None, f_heartbeat: Callable|None=None, test_single_request=False, override_api_url=None):
     def ceil_min(dt):
         return dt.replace(second=0, microsecond=0) + datetime.timedelta(minutes=1)
     def wait_until(dt):

@@ -3,6 +3,7 @@ import numpy as np
 from sklearn.cluster import AgglomerativeClustering
 from sklearn.metrics.pairwise import haversine_distances
 from collections import Counter
+from collections.abc import Callable
 from pathlib import Path
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
@@ -99,7 +100,7 @@ class DataLoader(ABC):
         return False
 
 class DataLoaderDB(DataLoader):
-    def __init__(self, *, f_factory_DBconn: callable, t0: int=None):
+    def __init__(self, *, f_factory_DBconn: Callable, t0: int | None = None):
         if not callable(f_factory_DBconn):
             raise TypeError('expecting function as argument')
         self.f_factory_DBconn = f_factory_DBconn

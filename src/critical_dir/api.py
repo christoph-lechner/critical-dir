@@ -182,7 +182,7 @@ def clusters_worker_fdev(*, res, cluster_ID, f_generate_subclusters):
     return f_generate_subclusters(data=data_in_cluster)
 
 
-def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime=None, use_simulated_data=False):
+def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime|None=None, use_simulated_data=False):
     if use_simulated_data:
         return generate_simulated_clusters(),[]
 

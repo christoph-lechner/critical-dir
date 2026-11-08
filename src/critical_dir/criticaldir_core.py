@@ -213,7 +213,7 @@ class DataLoaderDB(DataLoader):
         keys_to_keep = ['device', 'latitude', 'longitude', 'timestamp']
         data = [
             {k: d[k] for k in keys_to_keep}
-            for d in res_rows_filt
+            for d in res_rows_complete
         ]
         # FIXME: add code to close DB connection
         return data

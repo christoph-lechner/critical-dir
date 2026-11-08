@@ -17,6 +17,7 @@ import psycopg
 from psycopg.rows import dict_row
 from critical_dir.db_conn import get_db_conn
 from critical_dir.cmaps_util import load_cmap_jsonfile
+from critical_dir.my_util_files import get_fn
 
 from critical_dir.settings import get_settings
 
@@ -287,24 +288,14 @@ def download_worker(*, f_heartbeat: Callable|None=None, api_url=None):
     """
     settings = get_settings()
 
-    def get_fn(*, fn_extension:str='json'):
-        tnow = datetime.datetime.now(tz=datetime.timezone.utc)
-        tdatestr = tnow.strftime('%Y%m%d')
-        tnowstr = tnow.strftime('%Y%m%dT%H%M%S_%f') # '%f' is always 6 digits wide and padded w/ leading zeros
-        # create data directory if needed (using per-day directories for better file organization)
-        datadir = settings.api_downloader_json_outdir / tdatestr
-        datadir.mkdir(parents=False, exist_ok=True)
-        # return filename
-        return datadir / ('data_'+tnowstr+'.'+fn_extension)
 
     def put_info_file(txt, *, dupl_to_stdout=False):
         if dupl_to_stdout:
             print(txt)
-        fn = get_fn(fn_extension='txt')
+        fn = get_fn(outdir=settings.api_downloader_json_outdir, fn_extension='txt')
         print(f'going to write infos to file {fn}')
         with open(fn,'w') as fout:
             fout.write(txt)
-
 
     tprocstart = datetime.datetime.now(tz=datetime.timezone.utc)
 
@@ -320,7 +311,7 @@ def download_worker(*, f_heartbeat: Callable|None=None, api_url=None):
 
     try:
         # TODO: add timeouts here
-        fn_out = get_fn()
+        fn_out = get_fn(outdir=settings.api_downloader_json_outdir)
         print(f'Downloading data to file {fn_out} ...')
         # passing optional parameter using 'kwargs', prevents overriding default value given in function def
         kwargs = {}

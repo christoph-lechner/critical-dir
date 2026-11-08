@@ -55,6 +55,27 @@ def identify_most_recent_file(datadir, *, n=1):
 
     return lof[0]
 
+def get_fn(*, outdir:str, fn_extension:str='json', test_ts:datetime.datetime|None=None, just_filename:bool=False):
+    """
+    test_ts: normally this is not used ONLY FOR TESTING
+    """
+    tnow = datetime.datetime.now(tz=datetime.timezone.utc)
+    if test_ts:
+        tnow = test_ts
+
+    tdatestr = tnow.strftime('%Y%m%d')
+    tnowstr = tnow.strftime('%Y%m%dT%H%M%S_%f') # '%f' is always 6 digits wide and padded w/ leading zeros
+    # make filename and return (if requested), otherwise function proceeds with directory stuff
+    fn = 'data_'+tnowstr+'.'+fn_extension
+    if just_filename:
+        return fn
+
+    # create data directory if needed (using per-day directories for better file organization)
+    datadir = Path(outdir) / tdatestr
+    datadir.mkdir(parents=False, exist_ok=True)
+    return datadir / fn
+
+
 def main():
     settings = get_settings()
     datadir = Path(settings.api_downloader_json_outdir)

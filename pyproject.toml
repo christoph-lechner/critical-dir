@@ -18,6 +18,7 @@ dependencies = [
     "redis",
     "pydantic-settings",
     "jinja2",
+    "pre-commit",
     # the 'ruff' version specified here must match the version in .pre-commit-config.yaml
     "ruff==0.16.8"
 ]

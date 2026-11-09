@@ -3,7 +3,7 @@
 """
 
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
+from matplotlib import patches
 import numpy as np
 from pyproj import CRS, Transformer
 from pyproj.aoi import AreaOfInterest
@@ -17,7 +17,7 @@ import datetime
 def generate_subclusters(*, data, nmin=3, nmax=5, do_plot=False):
     def enforce_element_count(labels,curr_label):
         nele = np.sum(labels==curr_label)
-        if nmin<=nele and nele<=nmax:
+        if nmin<=nele<=nmax:
             return
         raise ValueError(f'there is a cluster having {nele} elements, violating the requirements.')
 
@@ -25,11 +25,11 @@ def generate_subclusters(*, data, nmin=3, nmax=5, do_plot=False):
     data_lon = np.array([_['longitude'] for _ in data])
     # print(f'number of datapoints {len(data_lat)}')
     if do_plot:
-        fig,hax=plt.subplots(1)
+        _,hax=plt.subplots(1)
         hax.plot(data_lon,data_lat,'.')
         plt.show()
 
-    tstart = datetime.datetime.now()
+    tstart = datetime.datetime.now(tz=datetime.timezone.utc)
 
     # Define the source coordinate system (WGS84 / standard Lat-Lon)
     # and use sample point to find ideal UTM (Universal Transverse Mercator)
@@ -122,8 +122,8 @@ def generate_subclusters(*, data, nmin=3, nmax=5, do_plot=False):
         group_N = np.sum(labels==curr_label)
         subclusters.append({'N':group_N, 'clat':group_center_lat, 'clon':group_center_lon, 'rho':group_rho})
 
-    tend = datetime.datetime.now()
-    deltat = (tend-tstart).total_seconds()
+    tend = datetime.datetime.now(tz=datetime.timezone.utc)
+    deltat = (tend-tstart).total_seconds() # noqa: F841
     # print(f'*** time needed for clustering {deltat:.3f}s ***')
 
 
@@ -131,7 +131,7 @@ def generate_subclusters(*, data, nmin=3, nmax=5, do_plot=False):
     # Finally, let's draw some plots #
     ##################################
     if do_plot:
-        fig,hax = plt.subplots(1)
+        _,hax = plt.subplots(1)
         for curr_label in set(labels):
             enforce_element_count(labels,curr_label)
             curr_x = xs[labels==curr_label]

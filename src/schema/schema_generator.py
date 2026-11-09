@@ -5,7 +5,7 @@ import jinja2
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--generate', type=str, help='specify what schema to generate')
+parser.add_argument('--generate', type=str, help='specify the schema to generate')
 args = parser.parse_args()
 
 # location of template: same directory as this script
@@ -35,4 +35,4 @@ elif args.generate=='docker-ing-test':
 elif args.generate=='docker-test':
     generate_dockertest_schema()
 else:
-    raise ValueError(f'unknown target: {generate}')
+    raise ValueError(f'unknown target: {args.generate}')

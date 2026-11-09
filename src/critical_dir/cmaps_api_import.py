@@ -8,7 +8,6 @@ import queue
 import sys
 import argparse
 from threading import Event
-from pathlib import Path
 import traceback
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -18,6 +17,7 @@ import psycopg
 from psycopg.rows import dict_row
 from critical_dir.db_conn import get_db_conn
 from critical_dir.cmaps_util import load_cmap_jsonfile
+from critical_dir.my_util_files import get_fn
 
 from critical_dir.settings import get_settings
 
@@ -170,7 +170,7 @@ def data_route_and_merge(cur, *, data_table, archive_table, quarantine_table, st
     # settings = get_settings() # this fails when running tests (there is no '.env' file with valid settings, so pydantic validation is not successful)
     res_m   = execute_merge(dst_table=data_table,        dataok=True)
     if use_archive:
-        res_m_a = execute_merge(dst_table=archive_table, dataok=True, deviceid_col='deviceid_h')
+        res_m_a = execute_merge(dst_table=archive_table, dataok=True, deviceid_col='deviceid_h') # noqa F841 # the name of the (unused) variable documents what is returned
     res_m_q = execute_merge(dst_table=quarantine_table,  dataok=False)
     n_q = res_m_q['n_inserts']+res_m_q['n_updates']
 
@@ -203,7 +203,7 @@ def status_info_generate_id(*, cur, info_table='criticalmaps_stats_dev'):
     res = cur.fetchone()
     return res['id']
 
-def store_status_info(*, cur, id_run:int=None, ps: ProcStats, info_table='criticalmaps_stats_dev'):
+def store_status_info(*, cur, id_run: int|None=None, ps: ProcStats, info_table='criticalmaps_stats_dev') -> None:
     if not id_run:
         id_run = status_info_generate_id(cur=cur, info_table=info_table)
 
@@ -261,7 +261,8 @@ def run_pipeline(cur,settings,data,t0, *, temptbl=True):
             use_archive=settings.use_archive,
     )
     # finally, expire old entries from the data table, but NOT from the archive table
-    nrows_deleted = data_delete_old(cur, data_table=settings.datatable)
+    nrows_deleted = data_delete_old(cur, data_table=settings.datatable) # noqa F841 # the name of the (unused) variable documents what is returned
+
 
     return PipelineResult(
         id_run,
@@ -281,46 +282,36 @@ def sighandler_term(signum, frame):
 
 #####
 
-def download_worker(*, f_heartbeat: Callable=None, api_url=None):
+def download_worker(*, f_heartbeat: Callable|None=None, api_url=None):
     """
     Returns True when everything was OK.
     """
     settings = get_settings()
 
-    def get_fn(*, fn_extension:str='json'):
-        tnow = datetime.datetime.now()
-        tdatestr = tnow.strftime('%Y%m%d')
-        tnowstr = tnow.strftime('%Y%m%dT%H%M%S_%f') # '%f' is always 6 digits wide and padded w/ leading zeros
-        # create data directory if needed (using per-day directories for better file organization)
-        datadir = settings.api_downloader_json_outdir / tdatestr
-        datadir.mkdir(parents=False, exist_ok=True)
-        # return filename
-        return datadir / ('data_'+tnowstr+'.'+fn_extension)
 
     def put_info_file(txt, *, dupl_to_stdout=False):
         if dupl_to_stdout:
             print(txt)
-        fn = get_fn(fn_extension='txt')
+        fn = get_fn(outdir=settings.api_downloader_json_outdir, fn_extension='txt')
         print(f'going to write infos to file {fn}')
         with open(fn,'w') as fout:
             fout.write(txt)
 
-
-    tprocstart = datetime.datetime.now()
+    tprocstart = datetime.datetime.now(tz=datetime.timezone.utc)
 
     # establish DB connection
     try:
         conn = get_db_conn()
         # (https://www.psycopg.org/psycopg3/docs/advanced/rows.html#row-factories)
         cur = conn.cursor(row_factory=dict_row)
-    except Exception as e:
+    except psycopg.Error: # catches base exception for all errors psycopg will raise
         print('*** Could not establish DB connection ***')
         put_info_file(traceback.format_exc(), dupl_to_stdout=True)
         return False
 
     try:
         # TODO: add timeouts here
-        fn_out = get_fn()
+        fn_out = get_fn(outdir=settings.api_downloader_json_outdir)
         print(f'Downloading data to file {fn_out} ...')
         # passing optional parameter using 'kwargs', prevents overriding default value given in function def
         kwargs = {}
@@ -333,16 +324,16 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
         # Heartbeat signaling everything is OK. The data was written stored in a file, so even if the following DB ingestion fails, we have the data.
         if f_heartbeat:
             f_heartbeat()
-        #if status['healthcheck']:
-        #    status['healthcheck'].heartbeat()
-    except Exception as e:
+    except Exception as e: # noqa: BLE001
+        # TODO: Improve this design to be more specific (don't just catch 'Exception'). Leaving it for now, as the exception specifics are stored in the DB.
+        #
         # Design idea to be implemented: Networking issues while getting the data are ok (this would also include any "bad" HTTP status codes such as 500),
         # consider to re-raise file I/O issues to stop the program (but then a watchdog has to start another instance so that data acquisition goes on)
         print('*** Data download resulted in exception ***')
         put_info_file(traceback.format_exc(), dupl_to_stdout=True)
         procstats = ProcStats(
                 tstart=tprocstart,
-                total_time = (datetime.datetime.now() - tprocstart).total_seconds(),
+                total_time = (datetime.datetime.now(tz=datetime.timezone.utc) - tprocstart).total_seconds(),
                 total_status = False,
                 exc_inphase='API access',
                 exc_name = type(e).__qualname__,
@@ -364,7 +355,7 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
         res_pipeline = run_pipeline(cur, settings, data, tprocstart)
         procstats = ProcStats(
                 tstart=tprocstart,
-                total_time = (datetime.datetime.now() - tprocstart).total_seconds(),
+                total_time = (datetime.datetime.now(tz=datetime.timezone.utc) - tprocstart).total_seconds(),
                 total_status = True,
                 # 2026-06-29: at the moment not assigning HTTP response code
                 filename = str(fn_out),
@@ -377,12 +368,13 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
         store_status_info(cur=cur, id_run=res_pipeline.id_run, ps=procstats, info_table=settings.statstable)
 
         conn.commit()
-    except Exception as e:
+    except Exception as e: # noqa: BLE001
+        # TODO: Improve this design to be more specific (don't just catch 'Exception'). Leaving it for now, as the exception specifics are stored in the DB.
         print('*** DB operations resulted in exception ***')
         put_info_file(traceback.format_exc(), dupl_to_stdout=True)
         procstats = ProcStats(
                 tstart=tprocstart,
-                total_time = (datetime.datetime.now() - tprocstart).total_seconds(),
+                total_time = (datetime.datetime.now(tz=datetime.timezone.utc) - tprocstart).total_seconds(),
                 total_status = False,
                 exc_inphase='DB access',
                 exc_name = type(e).__qualname__,
@@ -395,7 +387,8 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
         # Here, we don't know which part of the DB operations failed
         # -> rollback to be one the safe side
         conn.rollback()
-        store_status_info(cur=cur, id_run=id_run, ps=procstats, info_table=settings.statstable)
+        # log that we've got an exception (note that any runID that may have been assigned became invalid because of the DB rollback)
+        store_status_info(cur=cur, ps=procstats, info_table=settings.statstable)
         conn.commit()
         return False
 
@@ -403,31 +396,29 @@ def download_worker(*, f_heartbeat: Callable=None, api_url=None):
 
 
 
-def t_download_thread(*, stop_event, q_retcode: queue.Queue=None, f_heartbeat: Callable=None, test_single_request=False, override_api_url=None):
+def t_download_thread(*, stop_event, q_retcode: queue.Queue|None=None, f_heartbeat: Callable|None=None, test_single_request=False, override_api_url=None):
     def ceil_min(dt):
         return dt.replace(second=0, microsecond=0) + datetime.timedelta(minutes=1)
     def wait_until(dt):
         """
         Returns True if we received a stop signal
         """
-        deltat = tnext - datetime.datetime.now()
+        deltat = tnext - datetime.datetime.now(tz=datetime.timezone.utc)
         deltat = deltat.total_seconds()
         while deltat>0:
             # break wait down into short waits to make it responsive (I think a sleep cannot be interrupted by a signal in Python)
-            if deltat>3:
-                deltat = 3
+            deltat = min(deltat,3)
             # print(f'waiting for {deltat:.1f} seconds ...')
             time.sleep(deltat)
             if stop_event.is_set():
                 # print('got SIGTERM/SIGINT -> stopping')
                 return True
-            deltat = tnext - datetime.datetime.now()
+            deltat = tnext - datetime.datetime.now(tz=datetime.timezone.utc)
             deltat = deltat.total_seconds()
         return False
 
-    if f_heartbeat:
-        if not callable(f_heartbeat):
-            raise ValueError('if specified, value has to be "callable"')
+    if f_heartbeat and not callable(f_heartbeat):
+        raise TypeError('if specified, value has to be "callable"')
 
     # prepare arguments for worker
     kwargs = {}
@@ -444,7 +435,7 @@ def t_download_thread(*, stop_event, q_retcode: queue.Queue=None, f_heartbeat: C
         return
 
     # schedule first request to happen at the start of the next minute
-    tnext = ceil_min( datetime.datetime.now() )
+    tnext = ceil_min( datetime.datetime.now(tz=datetime.timezone.utc) )
     print(f'About to enter main loop, first API access scheduled for {tnext}')
     while True:
         wait_until(tnext)

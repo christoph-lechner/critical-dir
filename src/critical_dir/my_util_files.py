@@ -15,7 +15,7 @@ class FileInfo:
     fn: str = None
     ts: datetime.datetime = None
 
-def parsefn(fn):
+def parsefn(fn: str) -> FileInfo:
     m = re.match(r'^data_([0-9]{8}T[0-9]{6})_[0-9]+.json$', fn)
     if m:
         ts_str = m.group(1) # first parenthesized subgroup
@@ -24,7 +24,8 @@ def parsefn(fn):
         # In Python 3.11 (and later), datetime.datetime.fromisoformat can parse most ISO8601 formats (such as "20251127T210500" used here)
         # ts = datetime.datetime.fromisoformat(ts_str)
         # For Python 3.10, a different solution is needed
-        ts = datetime.datetime.strptime(ts_str, '%Y%m%dT%H%M%S')
+        ts = datetime.datetime.strptime(ts_str, '%Y%m%dT%H%M%S') \
+                .replace(tzinfo=datetime.timezone.utc) # assumes that the filename on disk is timestamp in UTC timezone
         return FileInfo(is_valid_filename=True,fn=fn,ts=ts)
     return FileInfo(is_valid_filename=False,fn=fn)
 
@@ -53,6 +54,27 @@ def identify_most_recent_file(datadir, *, n=1):
         return lof[:n]
 
     return lof[0]
+
+def get_fn(*, outdir:str, fn_extension:str='json', test_ts:datetime.datetime|None=None, just_filename:bool=False):
+    """
+    test_ts: normally this is not used ONLY FOR TESTING
+    """
+    tnow = datetime.datetime.now(tz=datetime.timezone.utc)
+    if test_ts:
+        tnow = test_ts
+
+    tdatestr = tnow.strftime('%Y%m%d')
+    tnowstr = tnow.strftime('%Y%m%dT%H%M%S_%f') # '%f' is always 6 digits wide and padded w/ leading zeros
+    # make filename and return (if requested), otherwise function proceeds with directory stuff
+    fn = 'data_'+tnowstr+'.'+fn_extension
+    if just_filename:
+        return fn
+
+    # create data directory if needed (using per-day directories for better file organization)
+    datadir = Path(outdir) / tdatestr
+    datadir.mkdir(parents=False, exist_ok=True)
+    return datadir / fn
+
 
 def main():
     settings = get_settings()

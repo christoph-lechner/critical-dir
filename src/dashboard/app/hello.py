@@ -94,7 +94,7 @@ for ndays in [7,30]:
     except psycopg.errors.UndefinedTable as e:
         st.warning(
                 f'''Got exception related to missing table. Remember that API statistics require additional data preparation.
-                The message is: "{str(e)}"
+                The message is: "{e!s}"
                 Stopping here.'''
         )
         st.stop() # stop here -> nothing remains to be done

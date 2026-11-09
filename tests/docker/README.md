@@ -58,6 +58,12 @@ If you wish to see the logs of the previous run, use
 docker compose -f ./tests/docker/docker-compose.ci.yml logs cdir_api_server
 ```
 
+### Inspecting the filesystem
+In some cases it is sufficient to inspect the filesystem of the already stopped container.
+```
+docker cp docker-cdir_ing_badurl-1:/stor - | tar -tv
+[... standard `tar` output ...]
+```
 
 ## Technical remarks
 ### Database init

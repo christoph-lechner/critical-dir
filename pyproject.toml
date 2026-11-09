@@ -18,6 +18,8 @@ dependencies = [
     "redis",
     "pydantic-settings",
     "jinja2",
+    # the 'ruff' version specified here must match the version in .pre-commit-config.yaml
+    "ruff==0.16.8"
 ]
 
 [project.scripts]
@@ -37,3 +39,11 @@ where = ["src"]
 [tool.pytest.ini_options]
 # Note: conftest.py file excludes certain subdirs -- unless enabled by command line option
 testpaths = ["tests"]
+
+
+[tool.ruff]
+# Ignore file containing code removed from other file
+# -> requires additional work before it can be used
+extend-exclude = ["src/critical_dir/criticaldir_core_plotter.py"]
+[tool.ruff.lint]
+ignore = ["I001","PLR2044"] # I001: Import block is un-sorted or un-formatted; PLR2044: Line with empty comment

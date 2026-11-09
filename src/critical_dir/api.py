@@ -325,10 +325,13 @@ def clusters_worker(*, ag, min_cluster_size:int=3, t0:datetime.datetime|None=Non
         # -> join them to one big set of subclusters
         # (this is ok as the number of clusters might have changed between the points in time
         # and so it is not trivial to relate current and historic clusters)
+        """
         l_sc = []
         for c in r_historic:
             for _ in c['subclusters']:
                 l_sc.append(_)
+        """
+        l_sc = [x for c in r_historic for x in c['subclusters']]
         r_h.append({'age':age, 'subclusters': l_sc})
     # print(r_h)
     return r, r_h

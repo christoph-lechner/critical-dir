@@ -333,8 +333,6 @@ def download_worker(*, f_heartbeat: Callable|None=None, api_url=None):
         # Heartbeat signaling everything is OK. The data was written stored in a file, so even if the following DB ingestion fails, we have the data.
         if f_heartbeat:
             f_heartbeat()
-        #if status['healthcheck']:
-        #    status['healthcheck'].heartbeat()
     except Exception as e: # noqa: BLE001
         # TODO: Improve this design to be more specific (don't just catch 'Exception'). Leaving it for now, as the exception specifics are stored in the DB.
         #
@@ -398,7 +396,8 @@ def download_worker(*, f_heartbeat: Callable|None=None, api_url=None):
         # Here, we don't know which part of the DB operations failed
         # -> rollback to be one the safe side
         conn.rollback()
-        store_status_info(cur=cur, id_run=id_run, ps=procstats, info_table=settings.statstable)
+        # log that we've got an exception (note that any runID that may have been assigned became invalid because of the DB rollback)
+        store_status_info(cur=cur, ps=procstats, info_table=settings.statstable)
         conn.commit()
         return False
 
